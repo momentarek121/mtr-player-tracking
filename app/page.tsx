@@ -5,6 +5,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
+import { supabase } from "@/lib/supabase";
 
 const DOMAINS: Record<string, { label: string; color: string }> = {
   TECHNICAL: { label: "فني", color: "#C8102E" },
@@ -23,8 +24,11 @@ export default function Page() {
   const [skillCategories, setSkillCategories] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any | null>(null);
   const [roadmap, setRoadmap] = useState<any[]>([]);
+  const [notes, setNotes] = useState<any[]>([]);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [assessments, setAssessments] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
-  const [tab, setTab] = useState<"overview" | "assess" | "roadmap">("overview");
+  const [tab, setTab] = useState<"overview" | "assess" | "roadmap" | "notes" | "files" | "assistant">("overview");
   const [loading, setLoading] = useState(true);
 
   const loadPlayers = async () => {
@@ -41,12 +45,52 @@ export default function Page() {
   };
 
   const loadPlayerData = async (playerId: string) => {
-    const [a, r] = await Promise.all([
+    const [a, r, n, f, s] = await Promise.all([
       fetch(`/api/players/${playerId}/analytics`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/roadmap`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/notes`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/attachments`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/assessments`).then((r) => r.json()),
     ]);
     setAnalytics(a);
     setRoadmap(r.roadmap || []);
+    setNotes(n.notes || []);
+    setAttachments(f.attachments || []);
+    setAssessments(s.assessments || []);
+  };
+
+  const addNote = async (content: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    await loadPlayerData(selectedId);
+  };
+
+  const uploadFile = async (file: File) => {
+    if (!selectedId) return;
+    const path = `${selectedId}/${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage.from("player-attachments").upload(path, file);
+    if (upErr) { alert("فشل الرفع: " + upErr.message); return; }
+    const { data: pub } = supabase.storage.from("player-attachments").getPublicUrl(path);
+    await fetch(`/api/players/${selectedId}/attachments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: file.name, fileUrl: pub.publicUrl, fileType: file.type }),
+    });
+    await loadPlayerData(selectedId);
+  };
+
+  const uploadAvatar = async (file: File) => {
+    if (!selectedId) return;
+    const path = `${selectedId}/${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage.from("player-photos").upload(path, file);
+    if (upErr) { alert("فشل الرفع: " + upErr.message); return; }
+    const { data: pub } = supabase.storage.from("player-photos").getPublicUrl(path);
+    await supabase.from("players").update({ photo_url: pub.publicUrl }).eq("id", selectedId);
+    await loadPlayers();
   };
 
   useEffect(() => {
@@ -149,6 +193,17 @@ export default function Page() {
         ) : (
           <div className="max-w-3xl">
             <div className="flex items-center gap-4 mb-6">
+              <label className="relative w-14 h-14 rounded-xl bg-neutral-800 border border-neutral-700 shrink-0 cursor-pointer overflow-hidden flex items-center justify-center text-[10px] text-neutral-500 text-center">
+                {selectedPlayer.photo_url ? (
+                  <img src={selectedPlayer.photo_url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  "صورة"
+                )}
+                <input
+                  type="file" accept="image/*" className="hidden"
+                  onChange={(e) => e.target.files?.[0] && uploadAvatar(e.target.files[0])}
+                />
+              </label>
               <div>
                 <div className="text-2xl font-semibold">{selectedPlayer.name}</div>
                 <div className="text-neutral-400 text-sm mt-1">
@@ -163,7 +218,14 @@ export default function Page() {
             </div>
 
             <div className="flex gap-6 border-b border-neutral-800 mb-6">
-              {[["overview", "نظرة عامة"], ["assess", "تسجيل تقييم"], ["roadmap", "خطة التطوير"]].map(([k, l]) => (
+              {[
+                ["overview", "نظرة عامة"],
+                ["assess", "تسجيل تقييم"],
+                ["roadmap", "خطة التطوير"],
+                ["notes", "ملاحظات"],
+                ["files", "ملفات وصور"],
+                ["assistant", "المساعد"],
+              ].map(([k, l]) => (
                 <button
                   key={k}
                   onClick={() => setTab(k as any)}
@@ -186,6 +248,11 @@ export default function Page() {
               />
             )}
             {tab === "roadmap" && <RoadmapTab roadmap={roadmap} />}
+            {tab === "notes" && <NotesTab notes={notes} onAdd={addNote} />}
+            {tab === "files" && <AttachmentsTab attachments={attachments} onUpload={uploadFile} />}
+            {tab === "assistant" && (
+              <AssistantTab player={selectedPlayer} assessments={assessments} roadmap={roadmap} skillCategories={skillCategories} />
+            )}
           </div>
         )}
       </main>
@@ -315,6 +382,164 @@ function RoadmapTab({ roadmap }: { roadmap: any[] }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function NotesTab({ notes, onAdd }: { notes: any[]; onAdd: (content: string) => void }) {
+  const [content, setContent] = useState("");
+
+  const submit = () => {
+    if (!content.trim()) return;
+    onAdd(content.trim());
+    setContent("");
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+        <div className="text-sm font-semibold text-neutral-300 mb-3">ملاحظة جديدة</div>
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="اكتب ملاحظة عن اللاعب (سلوك، إصابة، أداء في السبارينج...)"
+          rows={3}
+          className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-sm mb-3 resize-none"
+        />
+        <button onClick={submit} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold">
+          حفظ الملاحظة
+        </button>
+      </div>
+
+      <div className="space-y-2.5">
+        {notes.length === 0 && (
+          <div className="text-neutral-500 text-xs text-center py-8">مفيش ملاحظات مسجّلة لسه.</div>
+        )}
+        {notes.map((n) => (
+          <div key={n.id} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+            <div className="text-sm text-neutral-200 leading-relaxed mb-2">{n.content}</div>
+            <div className="text-[11px] text-neutral-500">
+              {new Date(n.created_at).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AttachmentsTab({ attachments, onUpload }: { attachments: any[]; onUpload: (f: File) => void }) {
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    await onUpload(file);
+    setUploading(false);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+        <div className="text-sm font-semibold text-neutral-300 mb-3">رفع ملف أو صورة</div>
+        <label className="flex items-center justify-center gap-2 border border-dashed border-neutral-700 rounded-lg py-6 text-sm text-neutral-400 cursor-pointer hover:border-neutral-500 transition">
+          {uploading ? "جاري الرفع..." : "دوس هنا أو اسحب ملف (صور، فيديو، PDF)"}
+          <input
+            type="file" className="hidden" disabled={uploading}
+            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+          />
+        </label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {attachments.length === 0 && (
+          <div className="col-span-2 text-neutral-500 text-xs text-center py-8">مفيش ملفات مرفوعة لسه.</div>
+        )}
+        {attachments.map((a) => (
+          <a
+            key={a.id} href={a.file_url} target="_blank" rel="noreferrer"
+            className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 hover:border-neutral-600 transition"
+          >
+            {a.file_type?.startsWith("image/") ? (
+              <img src={a.file_url} alt={a.file_name} className="w-full h-28 object-cover rounded-lg mb-2" />
+            ) : (
+              <div className="w-full h-28 bg-neutral-900 rounded-lg mb-2 flex items-center justify-center text-neutral-500 text-xs">
+                ملف
+              </div>
+            )}
+            <div className="text-xs text-neutral-300 truncate">{a.file_name}</div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Rule-based "assistant" — no external AI cost. Reads the player's own
+// data (roadmap + latest domain scores) and writes a plain-language
+// summary + focus plan. Swap this for a real Claude-powered chat later
+// by calling a server route that has ANTHROPIC_API_KEY set.
+function AssistantTab({ player, assessments, roadmap, skillCategories }: any) {
+  const summary = useMemo(() => {
+    const latestPerSkill = new Map<string, number>();
+    [...assessments].sort((a: any, b: any) => (a.date < b.date ? -1 : 1)).forEach((a: any) => {
+      latestPerSkill.set(a.skill_category_id, a.score);
+    });
+
+    const domainScores: Record<string, number[]> = {};
+    skillCategories.forEach((s: any) => {
+      const score = latestPerSkill.get(s.id);
+      if (score === undefined) return;
+      if (!domainScores[s.domain]) domainScores[s.domain] = [];
+      domainScores[s.domain].push(score);
+    });
+
+    const domainAverages = Object.entries(domainScores).map(([domain, scores]) => ({
+      domain,
+      avg: scores.reduce((a, b) => a + b, 0) / scores.length,
+    }));
+
+    if (domainAverages.length === 0) return null;
+
+    const strongest = domainAverages.reduce((a, b) => (a.avg > b.avg ? a : b));
+    const weakest = domainAverages.reduce((a, b) => (a.avg < b.avg ? a : b));
+    const topPriority = [...roadmap].sort((a: any, b: any) => a.priority - b.priority)[0];
+
+    return { strongest, weakest, topPriority, totalOpen: roadmap.length };
+  }, [assessments, roadmap, skillCategories]);
+
+  return (
+    <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 max-w-lg">
+      <div className="text-sm font-semibold text-neutral-300 mb-1">ملخص المدرب الآلي</div>
+      <div className="text-[11px] text-neutral-500 mb-4">تحليل مبني على قواعد ثابتة من بيانات اللاعب — من غير تكلفة ذكاء اصطناعي</div>
+
+      {!summary ? (
+        <div className="text-neutral-500 text-xs text-center py-8">
+          سجّل تقييمات للاعب الأول عشان يظهر التحليل.
+        </div>
+      ) : (
+        <div className="space-y-3 text-sm text-neutral-200 leading-relaxed">
+          <p>
+            <b>{player.name}</b> أقوى نقطة عنده حاليًا في محور{" "}
+            <span style={{ color: DOMAINS[summary.strongest.domain]?.color }}>
+              {DOMAINS[summary.strongest.domain]?.label}
+            </span>{" "}
+            (متوسط {summary.strongest.avg.toFixed(1)}/10)، بينما أضعف محور هو{" "}
+            <span style={{ color: DOMAINS[summary.weakest.domain]?.color }}>
+              {DOMAINS[summary.weakest.domain]?.label}
+            </span>{" "}
+            (متوسط {summary.weakest.avg.toFixed(1)}/10).
+          </p>
+
+          {summary.totalOpen > 0 ? (
+            <p>
+              فيه <b>{summary.totalOpen}</b> نقطة تطوير مفتوحة. الأولوية القصوى دلوقتي:{" "}
+              <b>{summary.topPriority?.title}</b> — {summary.topPriority?.recommendation}
+            </p>
+          ) : (
+            <p>مفيش نقاط ضعف واضحة مسجّلة حاليًا — استمر على نفس الوتيرة وسجّل تقييمات دورية.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
