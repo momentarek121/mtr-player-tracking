@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -27,8 +28,9 @@ export default function Page() {
   const [notes, setNotes] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [assessments, setAssessments] = useState<any[]>([]);
+  const [curriculum, setCurriculum] = useState<any | null>(null);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
-  const [tab, setTab] = useState<"overview" | "assess" | "roadmap" | "notes" | "files" | "assistant">("overview");
+  const [tab, setTab] = useState<"overview" | "assess" | "roadmap" | "notes" | "files" | "assistant" | "curriculum">("overview");
   const [loading, setLoading] = useState(true);
 
   const loadPlayers = async () => {
@@ -45,18 +47,30 @@ export default function Page() {
   };
 
   const loadPlayerData = async (playerId: string) => {
-    const [a, r, n, f, s] = await Promise.all([
+    const [a, r, n, f, s, c] = await Promise.all([
       fetch(`/api/players/${playerId}/analytics`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/roadmap`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/notes`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/attachments`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/assessments`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/curriculum`).then((r) => r.json()),
     ]);
     setAnalytics(a);
     setRoadmap(r.roadmap || []);
     setNotes(n.notes || []);
     setAttachments(f.attachments || []);
     setAssessments(s.assessments || []);
+    setCurriculum(c);
+  };
+
+  const toggleCurriculumItem = async (curriculumItemId: string, completed: boolean) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/curriculum`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ curriculumItemId, completed }),
+    });
+    await loadPlayerData(selectedId);
   };
 
   const addNote = async (content: string) => {
@@ -151,10 +165,17 @@ export default function Page() {
 
         <button
           onClick={() => setShowAddPlayer(true)}
-          className="mb-4 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
         >
           + إضافة لاعب
         </button>
+
+        <Link
+          href="/team"
+          className="mb-4 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+        >
+          📊 لوحة الفريق
+        </Link>
 
         <div className="flex-1 overflow-y-auto space-y-1">
           {players.length === 0 && (
@@ -232,6 +253,7 @@ export default function Page() {
                 ["overview", "نظرة عامة"],
                 ["assess", "تسجيل تقييم"],
                 ["roadmap", "خطة التطوير"],
+                ["curriculum", "متطلبات الحزام"],
                 ["notes", "ملاحظات"],
                 ["files", "ملفات وصور"],
                 ["assistant", "المساعد"],
@@ -258,6 +280,7 @@ export default function Page() {
               />
             )}
             {tab === "roadmap" && <RoadmapTab roadmap={roadmap} />}
+            {tab === "curriculum" && <CurriculumTab curriculum={curriculum} onToggle={toggleCurriculumItem} />}
             {tab === "notes" && <NotesTab notes={notes} onAdd={addNote} />}
             {tab === "files" && <AttachmentsTab attachments={attachments} onUpload={uploadFile} />}
             {tab === "assistant" && (
@@ -547,6 +570,59 @@ function AssistantTab({ player, assessments, roadmap, skillCategories }: any) {
           ) : (
             <p>مفيش نقاط ضعف واضحة مسجّلة حاليًا — استمر على نفس الوتيرة وسجّل تقييمات دورية.</p>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CurriculumTab({ curriculum, onToggle }: { curriculum: any; onToggle: (id: string, completed: boolean) => void }) {
+  if (!curriculum) return null;
+  const { items, completedCount, totalCount, readyForPromotion } = curriculum;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-sm font-semibold text-neutral-300">متطلبات الحزام الحالي</div>
+          <div className="text-xs text-neutral-400">{completedCount} / {totalCount}</div>
+        </div>
+        <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden mt-3">
+          <div
+            className="h-full bg-mtrred transition-all"
+            style={{ width: totalCount > 0 ? `${(completedCount / totalCount) * 100}%` : "0%" }}
+          />
+        </div>
+        {readyForPromotion && (
+          <div className="mt-3 bg-mtrgold/15 border border-mtrgold/40 text-yellow-300 text-xs font-semibold px-3 py-2 rounded-lg">
+            🎉 اللاعب مستوفي كل متطلبات الحزام ده — جاهز للترقية
+          </div>
+        )}
+      </div>
+
+      {items.length === 0 ? (
+        <div className="text-neutral-500 text-xs text-center py-8">مفيش متطلبات مسجّلة للحزام ده لسه.</div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item: any) => (
+            <label
+              key={item.id}
+              className="flex items-start gap-3 bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 cursor-pointer hover:border-neutral-700 transition"
+            >
+              <input
+                type="checkbox"
+                checked={item.completed}
+                onChange={(e) => onToggle(item.id, e.target.checked)}
+                className="mt-0.5 accent-mtrred w-4 h-4"
+              />
+              <div>
+                <div className={`text-sm ${item.completed ? "text-neutral-500 line-through" : "text-neutral-200"}`}>
+                  {item.title}
+                </div>
+                {item.description && <div className="text-xs text-neutral-500 mt-1">{item.description}</div>}
+              </div>
+            </label>
+          ))}
         </div>
       )}
     </div>
