@@ -132,7 +132,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const hasRadarData = domainAverages.some((d) => d.value > 0);
 
   return (
-    <div dir="rtl" className="min-h-screen p-6 md:p-10 max-w-2xl mx-auto">
+    <div dir="rtl" className="min-h-screen p-4 md:p-10 max-w-2xl mx-auto">
       <div className="flex items-center gap-2 mb-8">
         <div className="w-9 h-9 rounded-lg bg-mtrred flex items-center justify-center font-bold text-xs">MTR</div>
         <div className="text-xs text-neutral-500">بروفايل اللاعب — عرض فقط</div>

@@ -29,7 +29,7 @@ export default function TeamDashboard() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen p-6 md:p-10 max-w-3xl mx-auto">
+    <div dir="rtl" className="min-h-screen p-4 md:p-10 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-mtrred flex items-center justify-center font-bold text-sm">MTR</div>

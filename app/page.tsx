@@ -267,8 +267,8 @@ export default function Page() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="w-72 border-l border-neutral-800 p-4 flex flex-col shrink-0">
+    <div className="flex flex-col md:flex-row min-h-screen">
+      <aside className="w-full md:w-72 border-b md:border-b-0 md:border-l border-neutral-800 p-4 flex flex-col shrink-0 max-h-[45vh] md:max-h-none">
         <div className="flex items-center gap-3 mb-6 px-1">
           <div className="w-10 h-10 rounded-lg bg-mtrred flex items-center justify-center font-bold text-sm">
             MTR
@@ -316,7 +316,7 @@ export default function Page() {
         </div>
       </aside>
 
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         {!selectedPlayer ? (
           <div className="flex flex-col items-center justify-center h-[80vh] gap-3 text-center">
             <div className="text-lg font-semibold">ابدأ بإضافة لاعب</div>
@@ -329,7 +329,7 @@ export default function Page() {
           </div>
         ) : (
           <div className="max-w-3xl">
-            <div className="flex items-center gap-4 mb-6">
+            <div className="flex flex-wrap items-center gap-3 md:gap-4 mb-6">
               <label className="relative w-14 h-14 rounded-xl bg-neutral-800 border border-neutral-700 shrink-0 cursor-pointer overflow-hidden flex items-center justify-center text-[10px] text-neutral-500 text-center">
                 {selectedPlayer.photo_url ? (
                   <img src={selectedPlayer.photo_url} alt="" className="w-full h-full object-cover" />
@@ -342,7 +342,7 @@ export default function Page() {
                 />
               </label>
               <div>
-                <div className="text-2xl font-semibold">{selectedPlayer.name}</div>
+                <div className="text-xl md:text-2xl font-semibold">{selectedPlayer.name}</div>
                 <div className="text-neutral-400 text-sm mt-1">
                   {selectedPlayer.sport} · حزام {BELT_LABELS[selectedPlayer.current_belt]} · {selectedPlayer.weight_kg} كجم
                 </div>
@@ -354,7 +354,7 @@ export default function Page() {
               )}
               <button
                 onClick={() => setShowEditPlayer(true)}
-                className="mr-auto bg-neutral-900 border border-neutral-700 text-neutral-300 text-xs font-medium px-3 py-1.5 rounded-full hover:border-neutral-500 transition"
+                className="md:mr-auto bg-neutral-900 border border-neutral-700 text-neutral-300 text-xs font-medium px-3 py-1.5 rounded-full hover:border-neutral-500 transition"
               >
                 ✏️ تعديل البيانات
               </button>
@@ -370,7 +370,7 @@ export default function Page() {
               </button>
             </div>
 
-            <div className="flex gap-6 border-b border-neutral-800 mb-6">
+            <div className="flex gap-4 md:gap-6 border-b border-neutral-800 mb-6 overflow-x-auto whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {[
                 ["overview", "نظرة عامة"],
                 ["assess", "تسجيل تقييم"],
@@ -387,7 +387,7 @@ export default function Page() {
                 <button
                   key={k}
                   onClick={() => setTab(k as any)}
-                  className={`pb-2.5 text-sm font-medium border-b-2 ${
+                  className={`pb-2.5 text-sm font-medium border-b-2 shrink-0 ${
                     tab === k ? "text-white border-mtrred" : "text-neutral-500 border-transparent"
                   }`}
                 >
@@ -1042,8 +1042,8 @@ function AddPlayerModal({
   const canSave = name.trim() && weight;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-neutral-950 border border-neutral-700 rounded-2xl p-6 w-80" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-neutral-950 border border-neutral-700 rounded-2xl p-6 w-full max-w-sm max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="text-lg font-semibold mb-4">{isEdit ? "تعديل بيانات اللاعب" : "لاعب جديد"}</div>
 
         <label className="block text-xs text-neutral-400 mb-1.5">الاسم</label>
