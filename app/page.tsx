@@ -30,6 +30,7 @@ export default function Page() {
   const [assessments, setAssessments] = useState<any[]>([]);
   const [curriculum, setCurriculum] = useState<any | null>(null);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<"overview" | "assess" | "roadmap" | "notes" | "files" | "assistant" | "curriculum">("overview");
   const [loading, setLoading] = useState(true);
 
@@ -128,6 +129,34 @@ export default function Page() {
     await loadPlayers();
     if (json.player) setSelectedId(json.player.id);
     setShowAddPlayer(false);
+  };
+
+  const editPlayer = async (player: any) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(player),
+    });
+    await loadPlayers();
+    setShowEditPlayer(false);
+  };
+
+  const deletePlayer = async () => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}`, { method: "DELETE" });
+    setSelectedId(null);
+    setShowEditPlayer(false);
+    await loadPlayers();
+  };
+
+  const addSkillCategory = async (payload: { name: string; domain: string; sport: string }) => {
+    await fetch("/api/skill-categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await loadSkillCategories();
   };
 
   const addAssessment = async (skillCategoryId: string, score: number, date: string) => {
@@ -237,12 +266,18 @@ export default function Page() {
                 </div>
               )}
               <button
+                onClick={() => setShowEditPlayer(true)}
+                className="mr-auto bg-neutral-900 border border-neutral-700 text-neutral-300 text-xs font-medium px-3 py-1.5 rounded-full hover:border-neutral-500 transition"
+              >
+                ✏️ تعديل البيانات
+              </button>
+              <button
                 onClick={() => {
                   const url = `${window.location.origin}/player/${selectedPlayer.id}`;
                   navigator.clipboard.writeText(url);
                   alert("اتنسخ لينك اللاعب:\n" + url);
                 }}
-                className="mr-auto bg-neutral-900 border border-neutral-700 text-neutral-300 text-xs font-medium px-3 py-1.5 rounded-full hover:border-neutral-500 transition"
+                className="bg-neutral-900 border border-neutral-700 text-neutral-300 text-xs font-medium px-3 py-1.5 rounded-full hover:border-neutral-500 transition"
               >
                 نسخ لينك اللاعب 🔗
               </button>
@@ -277,6 +312,7 @@ export default function Page() {
                   (s) => s.sport === "BOTH" || s.sport === selectedPlayer.sport || selectedPlayer.sport === "BOTH"
                 )}
                 onAdd={addAssessment}
+                onAddSkillCategory={addSkillCategory}
               />
             )}
             {tab === "roadmap" && <RoadmapTab roadmap={roadmap} />}
@@ -292,6 +328,14 @@ export default function Page() {
 
       {showAddPlayer && (
         <AddPlayerModal onClose={() => setShowAddPlayer(false)} onSave={addPlayer} />
+      )}
+      {showEditPlayer && selectedPlayer && (
+        <AddPlayerModal
+          onClose={() => setShowEditPlayer(false)}
+          onSave={editPlayer}
+          initial={selectedPlayer}
+          onDelete={deletePlayer}
+        />
       )}
     </div>
   );
@@ -340,10 +384,19 @@ function OverviewTab({ analytics }: { analytics: any }) {
   );
 }
 
-function AssessTab({ skillCategories, onAdd }: { skillCategories: any[]; onAdd: (id: string, score: number, date: string) => void }) {
+function AssessTab({
+  skillCategories, onAdd, onAddSkillCategory,
+}: {
+  skillCategories: any[];
+  onAdd: (id: string, score: number, date: string) => void;
+  onAddSkillCategory: (payload: { name: string; domain: string; sport: string }) => Promise<void>;
+}) {
   const [skillId, setSkillId] = useState(skillCategories[0]?.id || "");
   const [score, setScore] = useState(7);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [showNewSkill, setShowNewSkill] = useState(false);
+  const [newSkillName, setNewSkillName] = useState("");
+  const [newSkillDomain, setNewSkillDomain] = useState("TECHNICAL");
 
   const grouped = useMemo(() => {
     const g: Record<string, any[]> = {};
@@ -354,6 +407,13 @@ function AssessTab({ skillCategories, onAdd }: { skillCategories: any[]; onAdd: 
     return g;
   }, [skillCategories]);
 
+  const submitNewSkill = async () => {
+    if (!newSkillName.trim()) return;
+    await onAddSkillCategory({ name: newSkillName.trim(), domain: newSkillDomain, sport: "BOTH" });
+    setNewSkillName("");
+    setShowNewSkill(false);
+  };
+
   return (
     <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 max-w-md">
       <div className="text-sm font-semibold text-neutral-300 mb-4">تسجيل تقييم مهارة</div>
@@ -362,7 +422,7 @@ function AssessTab({ skillCategories, onAdd }: { skillCategories: any[]; onAdd: 
       <select
         value={skillId}
         onChange={(e) => setSkillId(e.target.value)}
-        className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-sm mb-4"
+        className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-sm mb-2"
       >
         {Object.entries(grouped).map(([domain, skills]) => (
           <optgroup key={domain} label={DOMAINS[domain]?.label || domain}>
@@ -372,6 +432,43 @@ function AssessTab({ skillCategories, onAdd }: { skillCategories: any[]; onAdd: 
           </optgroup>
         ))}
       </select>
+
+      {!showNewSkill ? (
+        <button
+          onClick={() => setShowNewSkill(true)}
+          className="text-xs text-neutral-400 hover:text-neutral-200 transition mb-4"
+        >
+          + مهارة أو تكنيك مش موجود في القايمة؟ ضيفه هنا
+        </button>
+      ) : (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 mb-4 space-y-2">
+          <input
+            value={newSkillName}
+            onChange={(e) => setNewSkillName(e.target.value)}
+            placeholder="اسم المهارة أو التكنيك (أي فكرة)"
+            className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm"
+          />
+          <div className="flex gap-1.5 flex-wrap">
+            {Object.entries(DOMAINS).map(([key, d]) => (
+              <button
+                key={key}
+                onClick={() => setNewSkillDomain(key)}
+                className={`px-2.5 py-1 rounded-md text-[11px] border ${newSkillDomain === key ? "bg-mtrred border-mtrred" : "border-neutral-700 text-neutral-400"}`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={submitNewSkill} className="flex-1 bg-mtrred rounded-lg py-2 text-xs font-semibold">
+              إضافة المهارة
+            </button>
+            <button onClick={() => setShowNewSkill(false)} className="text-xs text-neutral-500 px-3">
+              إلغاء
+            </button>
+          </div>
+        </div>
+      )}
 
       <label className="block text-xs text-neutral-400 mb-1.5">الدرجة: {score} / 10</label>
       <input
@@ -629,19 +726,27 @@ function CurriculumTab({ curriculum, onToggle }: { curriculum: any; onToggle: (i
   );
 }
 
-function AddPlayerModal({ onClose, onSave }: { onClose: () => void; onSave: (p: any) => void }) {
-  const [name, setName] = useState("");
-  const [sport, setSport] = useState("BJJ");
-  const [belt, setBelt] = useState("WHITE");
-  const [weight, setWeight] = useState("");
-  const [dob, setDob] = useState("2000-01-01");
+function AddPlayerModal({
+  onClose, onSave, initial, onDelete,
+}: {
+  onClose: () => void;
+  onSave: (p: any) => void;
+  initial?: any;
+  onDelete?: () => void;
+}) {
+  const isEdit = !!initial;
+  const [name, setName] = useState(initial?.name || "");
+  const [sport, setSport] = useState(initial?.sport || "BJJ");
+  const [belt, setBelt] = useState(initial?.current_belt || "WHITE");
+  const [weight, setWeight] = useState(initial?.weight_kg?.toString() || "");
+  const [dob, setDob] = useState(initial?.dob || "2000-01-01");
 
   const canSave = name.trim() && weight;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-neutral-950 border border-neutral-700 rounded-2xl p-6 w-80" onClick={(e) => e.stopPropagation()}>
-        <div className="text-lg font-semibold mb-4">لاعب جديد</div>
+        <div className="text-lg font-semibold mb-4">{isEdit ? "تعديل بيانات اللاعب" : "لاعب جديد"}</div>
 
         <label className="block text-xs text-neutral-400 mb-1.5">الاسم</label>
         <input value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm mb-3" />
@@ -671,8 +776,17 @@ function AddPlayerModal({ onClose, onSave }: { onClose: () => void; onSave: (p: 
           onClick={() => onSave({ name: name.trim(), dob, sport, currentBelt: belt, weightKg: Number(weight) })}
           className="w-full bg-mtrred rounded-lg py-2.5 text-sm font-semibold disabled:opacity-40"
         >
-          حفظ اللاعب
+          {isEdit ? "حفظ التعديلات" : "حفظ اللاعب"}
         </button>
+
+        {isEdit && onDelete && (
+          <button
+            onClick={() => { if (confirm("متأكد إنك عايز تمسح اللاعب ده نهائيًا؟")) onDelete(); }}
+            className="w-full mt-2 text-red-400 text-xs py-2 hover:text-red-300 transition"
+          >
+            حذف اللاعب نهائيًا
+          </button>
+        )}
       </div>
     </div>
   );
