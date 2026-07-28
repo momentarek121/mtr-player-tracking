@@ -288,10 +288,21 @@ export default function Page() {
 
         <Link
           href="/team"
-          className="mb-4 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
         >
           📊 لوحة الفريق
         </Link>
+
+        <button
+          onClick={() => {
+            const url = `${window.location.origin}/login`;
+            navigator.clipboard.writeText(url);
+            alert("اتنسخ لينك تسجيل دخول اللاعبين:\n" + url);
+          }}
+          className="mb-4 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+        >
+          🔑 نسخ لينك تسجيل دخول اللاعبين
+        </button>
 
         <div className="flex-1 overflow-y-auto space-y-1">
           {players.length === 0 && (
