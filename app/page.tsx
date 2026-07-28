@@ -211,10 +211,20 @@ export default function Page() {
                 </div>
               </div>
               {roadmap.length > 0 && (
-                <div className="mr-auto bg-mtrred/15 border border-mtrred/40 text-red-300 text-xs font-semibold px-3 py-1.5 rounded-full">
+                <div className="bg-mtrred/15 border border-mtrred/40 text-red-300 text-xs font-semibold px-3 py-1.5 rounded-full">
                   {roadmap.length} نقطة تطوير مفتوحة
                 </div>
               )}
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/player/${selectedPlayer.id}`;
+                  navigator.clipboard.writeText(url);
+                  alert("اتنسخ لينك اللاعب:\n" + url);
+                }}
+                className="mr-auto bg-neutral-900 border border-neutral-700 text-neutral-300 text-xs font-medium px-3 py-1.5 rounded-full hover:border-neutral-500 transition"
+              >
+                نسخ لينك اللاعب 🔗
+              </button>
             </div>
 
             <div className="flex gap-6 border-b border-neutral-800 mb-6">
@@ -509,8 +519,7 @@ function AssistantTab({ player, assessments, roadmap, skillCategories }: any) {
 
   return (
     <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 max-w-lg">
-      <div className="text-sm font-semibold text-neutral-300 mb-1">ملخص المدرب الآلي</div>
-      <div className="text-[11px] text-neutral-500 mb-4">تحليل مبني على قواعد ثابتة من بيانات اللاعب — من غير تكلفة ذكاء اصطناعي</div>
+      <div className="text-sm font-semibold text-neutral-300 mb-4">ملخص المدرب الآلي</div>
 
       {!summary ? (
         <div className="text-neutral-500 text-xs text-center py-8">
