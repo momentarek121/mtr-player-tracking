@@ -1,0 +1,254 @@
+// ============================================================
+// MTR Team — Player Tracking & Performance Analytics Schema
+// Sport coverage: BJJ + MMA
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// Core identity
+// ------------------------------------------------------------
+
+enum Sport {
+  BJJ
+  MMA
+  BOTH
+}
+
+enum BeltRank {
+  WHITE
+  BLUE
+  PURPLE
+  BROWN
+  BLACK
+}
+
+enum UserRole {
+  ADMIN
+  HEAD_COACH
+  COACH
+  PLAYER
+}
+
+model Coach {
+  id          String   @id @default(cuid())
+  name        String
+  role        UserRole @default(COACH)
+  email       String   @unique
+  phone       String?
+  createdAt   DateTime @default(now())
+
+  sessionsLed      TrainingSession[]
+  assessmentsGiven SkillAssessment[]
+  physicalTestsRun PhysicalTest[]
+}
+
+model Player {
+  id           String     @id @default(cuid())
+  name         String
+  dob          DateTime
+  weightKg     Float
+  heightCm     Float?
+  sport        Sport      @default(BJJ)
+  currentBelt  BeltRank   @default(WHITE)
+  stripes      Int        @default(0)
+  joinDate     DateTime   @default(now())
+  active       Boolean    @default(true)
+  photoUrl     String?
+  notes        String?
+
+  beltHistory       BeltPromotion[]
+  attendance        Attendance[]
+  skillAssessments  SkillAssessment[]
+  physicalTests     PhysicalTest[]
+  competitions      CompetitionResult[]
+  roadmapItems      PlayerRoadmapItem[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model BeltPromotion {
+  id        String   @id @default(cuid())
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  belt      BeltRank
+  stripes   Int      @default(0)
+  date      DateTime @default(now())
+  awardedBy String?
+  notes     String?
+}
+
+// ------------------------------------------------------------
+// Training sessions & attendance
+// ------------------------------------------------------------
+
+enum SessionType {
+  TECHNICAL
+  PHYSICAL
+  SPARRING
+  TACTICAL
+  COMPETITION_PREP
+}
+
+model TrainingSession {
+  id          String      @id @default(cuid())
+  date        DateTime
+  type        SessionType
+  sport       Sport       @default(BJJ)
+  durationMin Int
+  coachId     String?
+  coach       Coach?      @relation(fields: [coachId], references: [id])
+  topic       String?
+  notes       String?
+
+  attendance  Attendance[]
+
+  createdAt   DateTime @default(now())
+}
+
+model Attendance {
+  id         String          @id @default(cuid())
+  playerId   String
+  player     Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  sessionId  String
+  session    TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  present    Boolean         @default(true)
+  notes      String?
+
+  @@unique([playerId, sessionId])
+}
+
+// ------------------------------------------------------------
+// Skill categories & technical/tactical assessment
+// ------------------------------------------------------------
+
+enum SkillDomain {
+  TECHNICAL   // e.g. guard, submissions, takedowns, striking
+  TACTICAL    // decision making, game plan execution
+  PHYSICAL    // strength, conditioning, flexibility
+  MENTAL      // discipline, composure, coachability
+}
+
+model SkillCategory {
+  id          String      @id @default(cuid())
+  name        String      // e.g. "Closed Guard", "Takedowns", "Clinch", "Cardio"
+  domain      SkillDomain
+  sport       Sport       @default(BOTH)
+  description String?
+
+  assessments SkillAssessment[]
+  ruleTargets RoadmapRule[]     @relation("RuleTargetSkill")
+}
+
+model SkillAssessment {
+  id              String        @id @default(cuid())
+  playerId        String
+  player          Player        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  skillCategoryId String
+  skillCategory   SkillCategory @relation(fields: [skillCategoryId], references: [id])
+  score           Int           // 1–10 scale
+  assessedById    String?
+  assessedBy      Coach?        @relation(fields: [assessedById], references: [id])
+  date            DateTime      @default(now())
+  notes           String?
+
+  @@index([playerId, date])
+}
+
+// ------------------------------------------------------------
+// Physical testing (measurable, repeatable numbers)
+// ------------------------------------------------------------
+
+enum PhysicalTestType {
+  BEEP_TEST
+  MAX_PUSHUPS
+  MAX_PULLUPS
+  PLANK_SECONDS
+  GRIP_STRENGTH_KG
+  SIT_AND_REACH_CM
+  SPRINT_20M_SEC
+  VERTICAL_JUMP_CM
+  BODY_FAT_PERCENT
+  BENCH_PRESS_1RM_KG
+  SQUAT_1RM_KG
+}
+
+model PhysicalTest {
+  id        String           @id @default(cuid())
+  playerId  String
+  player    Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  testType  PhysicalTestType
+  value     Float
+  unit      String
+  date      DateTime         @default(now())
+  recordedById String?
+  recordedBy   Coach?        @relation(fields: [recordedById], references: [id])
+
+  @@index([playerId, testType, date])
+}
+
+// ------------------------------------------------------------
+// Competition results
+// ------------------------------------------------------------
+
+enum CompetitionResultType {
+  WIN_SUBMISSION
+  WIN_POINTS
+  WIN_DECISION
+  WIN_KO_TKO
+  LOSS_SUBMISSION
+  LOSS_POINTS
+  LOSS_DECISION
+  LOSS_KO_TKO
+  DRAW
+  DQ
+}
+
+model CompetitionResult {
+  id              String                 @id @default(cuid())
+  playerId        String
+  player          Player                 @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  competitionName String
+  date            DateTime
+  sport           Sport
+  weightClass     String?
+  opponentName    String?
+  result          CompetitionResultType
+  notes           String?
+}
+
+// ------------------------------------------------------------
+// Roadmap engine (rule-based recommendations)
+// ------------------------------------------------------------
+
+model RoadmapRule {
+  id              String        @id @default(cuid())
+  name            String        // human label, e.g. "Weak takedown defense"
+  skillCategoryId String
+  skillCategory   SkillCategory @relation("RuleTargetSkill", fields: [skillCategoryId], references: [id])
+  scoreBelow      Int           // trigger when latest score < this value
+  recommendation  String        // text shown to coach/player
+  priority        Int           @default(1) // 1 = high, 3 = low
+  active          Boolean       @default(true)
+}
+
+model PlayerRoadmapItem {
+  id             String   @id @default(cuid())
+  playerId       String
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  ruleId         String?
+  title          String
+  recommendation String
+  priority       Int      @default(1)
+  status         String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED
+  generatedAt    DateTime @default(now())
+  resolvedAt     DateTime?
+}
