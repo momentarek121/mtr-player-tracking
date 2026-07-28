@@ -29,6 +29,11 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const [assessments, setAssessments] = useState<any[]>([]);
   const [roadmap, setRoadmap] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [schedule, setSchedule] = useState<any[]>([]);
+  const [meals, setMeals] = useState<any[]>([]);
+  const [exercises, setExercises] = useState<any[]>([]);
+  const [feedbackMsg, setFeedbackMsg] = useState("");
+  const [feedbackSent, setFeedbackSent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -38,17 +43,36 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       if (!p) { setNotFound(true); setLoading(false); return; }
       setPlayer(p);
 
-      const [{ data: a }, { data: r }, { data: f }] = await Promise.all([
+      const [{ data: a }, { data: r }, { data: f }, { data: sch }, { data: mls }, { data: exs }] = await Promise.all([
         supabase.from("skill_assessments").select("*, skill_categories(name,domain)").eq("player_id", playerId).order("date"),
         supabase.from("player_roadmap_items").select("*").eq("player_id", playerId).eq("status", "OPEN").order("priority"),
         supabase.from("player_attachments").select("*").eq("player_id", playerId).order("uploaded_at", { ascending: false }),
+        supabase.from("player_schedule").select("*").eq("player_id", playerId),
+        supabase.from("player_meals").select("*").eq("player_id", playerId).order("sort_order"),
+        supabase.from("player_exercises").select("*").eq("player_id", playerId).order("assigned_at", { ascending: false }),
       ]);
       setAssessments(a || []);
       setRoadmap(r || []);
       setAttachments(f || []);
+      setSchedule(sch || []);
+      setMeals(mls || []);
+      setExercises(exs || []);
       setLoading(false);
     })();
   }, [playerId]);
+
+  const toggleExercise = async (id: string, completed: boolean) => {
+    await supabase.from("player_exercises").update({ completed, completed_at: completed ? new Date().toISOString() : null }).eq("id", id);
+    setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, completed } : e)));
+  };
+
+  const submitFeedback = async () => {
+    if (!feedbackMsg.trim()) return;
+    await supabase.from("player_feedback").insert({ player_id: playerId, message: feedbackMsg.trim() });
+    setFeedbackMsg("");
+    setFeedbackSent(true);
+    setTimeout(() => setFeedbackSent(false), 3000);
+  };
 
   const latestScores = useMemo(() => {
     const map: Record<string, number> = {};
@@ -182,6 +206,59 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
           )}
         </div>
 
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+          <div className="text-sm font-semibold text-neutral-300 mb-3">تمارينك المكلّف بيها</div>
+          {exercises.length === 0 ? (
+            <div className="text-neutral-500 text-xs text-center py-6">مفيش تمارين متكلّف بيها حاليًا.</div>
+          ) : (
+            <div className="space-y-2">
+              {exercises.map((ex: any) => (
+                <label key={ex.id} className="flex items-start gap-3 bg-neutral-900 border border-neutral-800 rounded-lg px-3.5 py-3 cursor-pointer">
+                  <input
+                    type="checkbox" checked={ex.completed}
+                    onChange={(e) => toggleExercise(ex.id, e.target.checked)}
+                    className="mt-0.5 accent-mtrred w-4 h-4"
+                  />
+                  <div>
+                    <div className={`text-sm ${ex.completed ? "text-neutral-500 line-through" : "text-neutral-200"}`}>{ex.title}</div>
+                    {ex.description && <div className="text-xs text-neutral-500 mt-1">{ex.description}</div>}
+                    {ex.due_date && <div className="text-[11px] text-neutral-600 mt-1">قبل: {ex.due_date}</div>}
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {schedule.length > 0 && (
+          <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+            <div className="text-sm font-semibold text-neutral-300 mb-3">جدولك الأسبوعي</div>
+            <div className="space-y-1.5">
+              {schedule.map((s: any) => (
+                <div key={s.id} className="flex items-center justify-between bg-neutral-900 rounded-lg px-3.5 py-2.5">
+                  <div className="text-sm">{s.activity}</div>
+                  <div className="text-xs text-neutral-500">{s.day_of_week}{s.time_label ? ` · ${s.time_label}` : ""}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {meals.length > 0 && (
+          <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+            <div className="text-sm font-semibold text-neutral-300 mb-3">خطتك الغذائية</div>
+            <div className="space-y-2">
+              {meals.map((m: any) => (
+                <div key={m.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-3">
+                  <div className="text-xs text-mtrgold font-medium mb-1">{m.meal_time}</div>
+                  <div className="text-sm">{m.title}</div>
+                  {m.description && <div className="text-xs text-neutral-500 mt-1">{m.description}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {attachments.length > 0 && (
           <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
             <div className="text-sm font-semibold text-neutral-300 mb-3">ملفات وفيديوهات</div>
@@ -199,6 +276,21 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
             </div>
           </div>
         )}
+
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+          <div className="text-sm font-semibold text-neutral-300 mb-1">ابعت ملاحظة أو طلب للمدرب</div>
+          <div className="text-[11px] text-neutral-500 mb-3">مثلاً: طلب تعديل في الجدول، ملاحظة عن إصابة، أو أي حاجة عايز توصلها</div>
+          <textarea
+            value={feedbackMsg}
+            onChange={(e) => setFeedbackMsg(e.target.value)}
+            placeholder="اكتب رسالتك هنا..."
+            rows={3}
+            className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-sm mb-3 resize-none"
+          />
+          <button onClick={submitFeedback} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold">
+            {feedbackSent ? "✓ اتبعتت" : "إرسال للمدرب"}
+          </button>
+        </div>
       </div>
 
       <div className="text-center text-[11px] text-neutral-600 mt-8">MTR Team — نظام تتبع اللاعبين</div>

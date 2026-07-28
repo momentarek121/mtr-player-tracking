@@ -29,9 +29,15 @@ export default function Page() {
   const [attachments, setAttachments] = useState<any[]>([]);
   const [assessments, setAssessments] = useState<any[]>([]);
   const [curriculum, setCurriculum] = useState<any | null>(null);
+  const [schedule, setSchedule] = useState<any[]>([]);
+  const [meals, setMeals] = useState<any[]>([]);
+  const [exercises, setExercises] = useState<any[]>([]);
+  const [feedback, setFeedback] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
-  const [tab, setTab] = useState<"overview" | "assess" | "roadmap" | "notes" | "files" | "assistant" | "curriculum">("overview");
+  const [tab, setTab] = useState<
+    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests"
+  >("overview");
   const [loading, setLoading] = useState(true);
 
   const loadPlayers = async () => {
@@ -48,13 +54,17 @@ export default function Page() {
   };
 
   const loadPlayerData = async (playerId: string) => {
-    const [a, r, n, f, s, c] = await Promise.all([
+    const [a, r, n, f, s, c, sch, mls, exs, fb] = await Promise.all([
       fetch(`/api/players/${playerId}/analytics`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/roadmap`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/notes`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/attachments`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/assessments`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/curriculum`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/schedule`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/nutrition`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/exercises`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/feedback`).then((r) => r.json()),
     ]);
     setAnalytics(a);
     setRoadmap(r.roadmap || []);
@@ -62,6 +72,82 @@ export default function Page() {
     setAttachments(f.attachments || []);
     setAssessments(s.assessments || []);
     setCurriculum(c);
+    setSchedule(sch.schedule || []);
+    setMeals(mls.meals || []);
+    setExercises(exs.exercises || []);
+    setFeedback(fb.feedback || []);
+  };
+
+  const addScheduleItem = async (dayOfWeek: string, timeLabel: string, activity: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/schedule`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dayOfWeek, timeLabel, activity }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const deleteScheduleItem = async (itemId: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/schedule?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
+  const addMeal = async (mealTime: string, title: string, description: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/nutrition`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mealTime, title, description }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const deleteMeal = async (itemId: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/nutrition?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
+  const addExercise = async (title: string, description: string, dueDate: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/exercises`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, description, dueDate }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const toggleExercise = async (itemId: string, completed: boolean) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/exercises`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId, completed }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const deleteExercise = async (itemId: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/exercises?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
+  const replyFeedback = async (itemId: string, status: string, coachReply?: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/feedback`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId, status, coachReply }),
+    });
+    await loadPlayerData(selectedId);
+  };
+
+  const addCurriculumItem = async (title: string) => {
+    if (!selectedPlayerBelt) return;
+    await fetch("/api/curriculum-items", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ belt: selectedPlayerBelt, title }),
+    });
+    if (selectedId) await loadPlayerData(selectedId);
+  };
+  const deleteCurriculumItem = async (itemId: string) => {
+    await fetch(`/api/curriculum-items/${itemId}`, { method: "DELETE" });
+    if (selectedId) await loadPlayerData(selectedId);
   };
 
   const toggleCurriculumItem = async (curriculumItemId: string, completed: boolean) => {
@@ -170,6 +256,7 @@ export default function Page() {
   };
 
   const selectedPlayer = players.find((p) => p.id === selectedId);
+  const selectedPlayerBelt = selectedPlayer?.current_belt;
 
   if (loading) {
     return (
@@ -289,6 +376,10 @@ export default function Page() {
                 ["assess", "تسجيل تقييم"],
                 ["roadmap", "خطة التطوير"],
                 ["curriculum", "متطلبات الحزام"],
+                ["schedule", "الجدول"],
+                ["nutrition", "التغذية"],
+                ["exercises", "تمارين"],
+                ["requests", "طلبات اللاعب"],
                 ["notes", "ملاحظات"],
                 ["files", "ملفات وصور"],
                 ["assistant", "المساعد"],
@@ -316,7 +407,21 @@ export default function Page() {
               />
             )}
             {tab === "roadmap" && <RoadmapTab roadmap={roadmap} />}
-            {tab === "curriculum" && <CurriculumTab curriculum={curriculum} onToggle={toggleCurriculumItem} />}
+            {tab === "curriculum" && (
+              <CurriculumTab
+                curriculum={curriculum}
+                onToggle={toggleCurriculumItem}
+                onAddItem={addCurriculumItem}
+                onDeleteItem={deleteCurriculumItem}
+                belt={selectedPlayer.current_belt}
+              />
+            )}
+            {tab === "schedule" && <ScheduleTab schedule={schedule} onAdd={addScheduleItem} onDelete={deleteScheduleItem} />}
+            {tab === "nutrition" && <NutritionTab meals={meals} onAdd={addMeal} onDelete={deleteMeal} />}
+            {tab === "exercises" && (
+              <ExercisesTab exercises={exercises} onAdd={addExercise} onToggle={toggleExercise} onDelete={deleteExercise} />
+            )}
+            {tab === "requests" && <RequestsTab feedback={feedback} onReply={replyFeedback} />}
             {tab === "notes" && <NotesTab notes={notes} onAdd={addNote} />}
             {tab === "files" && <AttachmentsTab attachments={attachments} onUpload={uploadFile} />}
             {tab === "assistant" && (
@@ -673,15 +778,190 @@ function AssistantTab({ player, assessments, roadmap, skillCategories }: any) {
   );
 }
 
-function CurriculumTab({ curriculum, onToggle }: { curriculum: any; onToggle: (id: string, completed: boolean) => void }) {
+const WEEKDAYS = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
+
+function ScheduleTab({ schedule, onAdd, onDelete }: { schedule: any[]; onAdd: (d: string, t: string, a: string) => void; onDelete: (id: string) => void }) {
+  const [day, setDay] = useState(WEEKDAYS[0]);
+  const [time, setTime] = useState("");
+  const [activity, setActivity] = useState("");
+
+  const submit = () => {
+    if (!activity.trim()) return;
+    onAdd(day, time, activity.trim());
+    setActivity(""); setTime("");
+  };
+
+  const byDay = useMemo(() => {
+    const g: Record<string, any[]> = {};
+    schedule.forEach((s) => { if (!g[s.day_of_week]) g[s.day_of_week] = []; g[s.day_of_week].push(s); });
+    return g;
+  }, [schedule]);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-2">
+        <div className="flex gap-2 flex-wrap">
+          {WEEKDAYS.map((d) => (
+            <button key={d} onClick={() => setDay(d)} className={`px-2.5 py-1 rounded-md text-xs border ${day === d ? "bg-mtrred border-mtrred" : "border-neutral-700 text-neutral-400"}`}>{d}</button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input value={time} onChange={(e) => setTime(e.target.value)} placeholder="الساعة (مثلاً 6 م)" className="w-28 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+          <input value={activity} onChange={(e) => setActivity(e.target.value)} placeholder="النشاط (مثلاً حصة سبارينج)" className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+          <button onClick={submit} className="bg-mtrred rounded-lg px-4 text-sm font-semibold shrink-0">إضافة</button>
+        </div>
+      </div>
+
+      {WEEKDAYS.filter((d) => byDay[d]?.length).map((d) => (
+        <div key={d} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+          <div className="text-xs font-semibold text-neutral-400 mb-2">{d}</div>
+          <div className="space-y-1.5">
+            {byDay[d].map((item: any) => (
+              <div key={item.id} className="flex items-center justify-between bg-neutral-900 rounded-lg px-3 py-2">
+                <div className="text-sm">{item.time_label && <span className="text-neutral-500 ml-2">{item.time_label}</span>}{item.activity}</div>
+                <button onClick={() => onDelete(item.id)} className="text-neutral-600 hover:text-red-400 text-xs">حذف</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {schedule.length === 0 && <div className="text-neutral-500 text-xs text-center py-8">مفيش جدول مسجّل لسه.</div>}
+    </div>
+  );
+}
+
+function NutritionTab({ meals, onAdd, onDelete }: { meals: any[]; onAdd: (mt: string, t: string, d: string) => void; onDelete: (id: string) => void }) {
+  const [mealTime, setMealTime] = useState("الفطار");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+
+  const submit = () => {
+    if (!title.trim()) return;
+    onAdd(mealTime, title.trim(), description.trim());
+    setTitle(""); setDescription("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-2">
+        <div className="flex gap-1.5 flex-wrap">
+          {["الفطار", "قبل التمرين", "بعد التمرين", "الغدا", "العشا", "سناك"].map((m) => (
+            <button key={m} onClick={() => setMealTime(m)} className={`px-2.5 py-1 rounded-md text-xs border ${mealTime === m ? "bg-mtrred border-mtrred" : "border-neutral-700 text-neutral-400"}`}>{m}</button>
+          ))}
+        </div>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="عنوان الوجبة" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="تفاصيل (المكونات، الكمية...)" rows={2} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm resize-none" />
+        <button onClick={submit} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold">إضافة وجبة</button>
+      </div>
+
+      <div className="space-y-2">
+        {meals.map((m: any) => (
+          <div key={m.id} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-xs text-mtrgold font-medium">{m.meal_time}</div>
+              <button onClick={() => onDelete(m.id)} className="text-neutral-600 hover:text-red-400 text-xs">حذف</button>
+            </div>
+            <div className="text-sm font-medium">{m.title}</div>
+            {m.description && <div className="text-xs text-neutral-500 mt-1">{m.description}</div>}
+          </div>
+        ))}
+        {meals.length === 0 && <div className="text-neutral-500 text-xs text-center py-8">مفيش خطة غذائية مسجّلة لسه.</div>}
+      </div>
+    </div>
+  );
+}
+
+function ExercisesTab({ exercises, onAdd, onToggle, onDelete }: { exercises: any[]; onAdd: (t: string, d: string, due: string) => void; onToggle: (id: string, c: boolean) => void; onDelete: (id: string) => void }) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState("");
+
+  const submit = () => {
+    if (!title.trim()) return;
+    onAdd(title.trim(), description.trim(), dueDate);
+    setTitle(""); setDescription(""); setDueDate("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-2">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="عنوان التمرين (مثلاً: 100 تكرار سبرول)" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="تفاصيل" rows={2} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm resize-none" />
+        <div className="flex gap-2">
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+          <button onClick={submit} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold">تكليف تمرين</button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {exercises.map((ex: any) => (
+          <label key={ex.id} className="flex items-start gap-3 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 cursor-pointer">
+            <input type="checkbox" checked={ex.completed} onChange={(e) => onToggle(ex.id, e.target.checked)} className="mt-0.5 accent-mtrred w-4 h-4" />
+            <div className="flex-1">
+              <div className={`text-sm ${ex.completed ? "text-neutral-500 line-through" : "text-neutral-200"}`}>{ex.title}</div>
+              {ex.description && <div className="text-xs text-neutral-500 mt-1">{ex.description}</div>}
+              {ex.due_date && <div className="text-[11px] text-neutral-600 mt-1">قبل: {ex.due_date}</div>}
+            </div>
+            <button onClick={(e) => { e.preventDefault(); onDelete(ex.id); }} className="text-neutral-600 hover:text-red-400 text-xs">حذف</button>
+          </label>
+        ))}
+        {exercises.length === 0 && <div className="text-neutral-500 text-xs text-center py-8">مفيش تمارين مكلّف بيها اللاعب لسه.</div>}
+      </div>
+    </div>
+  );
+}
+
+function RequestsTab({ feedback, onReply }: { feedback: any[]; onReply: (id: string, status: string, reply?: string) => void }) {
+  return (
+    <div className="space-y-2.5">
+      {feedback.length === 0 && <div className="text-neutral-500 text-xs text-center py-8">اللاعب لسه ما بعتش أي ملاحظات أو طلبات.</div>}
+      {feedback.map((f: any) => (
+        <div key={f.id} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${f.status === "PENDING" ? "bg-mtrgold/15 text-yellow-300" : "bg-neutral-800 text-neutral-400"}`}>
+              {f.status === "PENDING" ? "بانتظار الرد" : "تمت المراجعة"}
+            </span>
+            <span className="text-[11px] text-neutral-600">{new Date(f.created_at).toLocaleDateString("ar-EG")}</span>
+          </div>
+          <div className="text-sm text-neutral-200 mb-3">{f.message}</div>
+          {f.status === "PENDING" && (
+            <button
+              onClick={() => onReply(f.id, "REVIEWED")}
+              className="text-xs bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 hover:border-neutral-500 transition"
+            >
+              تعليم كمُراجَع
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CurriculumTab({
+  curriculum, onToggle, onAddItem, onDeleteItem, belt,
+}: {
+  curriculum: any;
+  onToggle: (id: string, completed: boolean) => void;
+  onAddItem: (title: string) => void;
+  onDeleteItem: (id: string) => void;
+  belt: string;
+}) {
+  const [newTitle, setNewTitle] = useState("");
   if (!curriculum) return null;
   const { items, completedCount, totalCount, readyForPromotion } = curriculum;
+
+  const submit = () => {
+    if (!newTitle.trim()) return;
+    onAddItem(newTitle.trim());
+    setNewTitle("");
+  };
 
   return (
     <div className="space-y-4">
       <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
         <div className="flex items-center justify-between mb-1">
-          <div className="text-sm font-semibold text-neutral-300">متطلبات الحزام الحالي</div>
+          <div className="text-sm font-semibold text-neutral-300">متطلبات حزام {BELT_LABELS[belt]}</div>
           <div className="text-xs text-neutral-400">{completedCount} / {totalCount}</div>
         </div>
         <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden mt-3">
@@ -697,28 +977,46 @@ function CurriculumTab({ curriculum, onToggle }: { curriculum: any; onToggle: (i
         )}
       </div>
 
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex gap-2">
+        <input
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          placeholder={`ضيف متطلب جديد لحزام ${BELT_LABELS[belt]}`}
+          className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm"
+        />
+        <button onClick={submit} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold shrink-0">
+          إضافة
+        </button>
+      </div>
+
       {items.length === 0 ? (
-        <div className="text-neutral-500 text-xs text-center py-8">مفيش متطلبات مسجّلة للحزام ده لسه.</div>
+        <div className="text-neutral-500 text-xs text-center py-8">مفيش متطلبات مسجّلة للحزام ده لسه — ضيف أول واحد فوق.</div>
       ) : (
         <div className="space-y-2">
           {items.map((item: any) => (
-            <label
+            <div
               key={item.id}
-              className="flex items-start gap-3 bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 cursor-pointer hover:border-neutral-700 transition"
+              className="flex items-start gap-3 bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 hover:border-neutral-700 transition"
             >
               <input
                 type="checkbox"
                 checked={item.completed}
                 onChange={(e) => onToggle(item.id, e.target.checked)}
-                className="mt-0.5 accent-mtrred w-4 h-4"
+                className="mt-0.5 accent-mtrred w-4 h-4 cursor-pointer"
               />
-              <div>
+              <div className="flex-1">
                 <div className={`text-sm ${item.completed ? "text-neutral-500 line-through" : "text-neutral-200"}`}>
                   {item.title}
                 </div>
                 {item.description && <div className="text-xs text-neutral-500 mt-1">{item.description}</div>}
               </div>
-            </label>
+              <button
+                onClick={() => onDeleteItem(item.id)}
+                className="text-neutral-600 hover:text-red-400 text-xs transition shrink-0"
+              >
+                حذف
+              </button>
+            </div>
           ))}
         </div>
       )}
