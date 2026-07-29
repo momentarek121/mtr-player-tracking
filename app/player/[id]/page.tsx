@@ -129,6 +129,23 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
     return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500">اللاعب ده مش موجود.</div>;
   }
 
+  if (player.approval_status === "PENDING") {
+    return (
+      <div dir="rtl" className="min-h-screen flex items-center justify-center p-4">
+        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-8 max-w-sm text-center">
+          <div className="w-14 h-14 rounded-xl bg-mtrred flex items-center justify-center font-bold text-lg mx-auto mb-4">MTR</div>
+          <div className="text-lg font-semibold mb-2">أهلًا {player.name} 👋</div>
+          <div className="text-sm text-neutral-400 leading-relaxed mb-4">
+            بياناتك اتسجّلت بنجاح، وحاليًا بانتظار موافقة المدرب. بمجرد ما يوافق هتقدر تشوف تطورك الكامل، خطتك، والمساعد الذكي.
+          </div>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2 text-xs font-mono text-mtrgold">
+            كودك: {player.player_code}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const hasRadarData = domainAverages.some((d) => d.value > 0);
 
   return (
