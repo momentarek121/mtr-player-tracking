@@ -37,6 +37,9 @@ export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [playerSearch, setPlayerSearch] = useState("");
   const [pendingCount, setPendingCount] = useState(0);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
     "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests"
@@ -245,6 +248,28 @@ export default function Page() {
     await loadPlayers();
   };
 
+  const deleteSelectedPlayers = async () => {
+    if (selectedForDelete.size === 0) return;
+    if (!confirm(`متأكد إنك عايز تمسح ${selectedForDelete.size} لاعب نهائيًا؟`)) return;
+    setDeleting(true);
+    await Promise.all(
+      Array.from(selectedForDelete).map((id) => fetch(`/api/players/${id}`, { method: "DELETE" }))
+    );
+    if (selectedId && selectedForDelete.has(selectedId)) setSelectedId(null);
+    setSelectedForDelete(new Set());
+    setBulkMode(false);
+    setDeleting(false);
+    await loadPlayers();
+  };
+
+  const toggleSelectForDelete = (id: string) => {
+    setSelectedForDelete((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const addSkillCategory = async (payload: { name: string; domain: string; sport: string }) => {
     await fetch("/api/skill-categories", {
       method: "POST",
@@ -344,8 +369,26 @@ export default function Page() {
           value={playerSearch}
           onChange={(e) => setPlayerSearch(e.target.value)}
           placeholder="دور بالاسم أو الكود..."
-          className="mb-3 w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm"
+          className="mb-2 w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm"
         />
+
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={() => { setBulkMode((v) => !v); setSelectedForDelete(new Set()); }}
+            className="text-xs text-neutral-400 hover:text-neutral-200 transition"
+          >
+            {bulkMode ? "إلغاء التحديد" : "تحديد للحذف"}
+          </button>
+          {bulkMode && selectedForDelete.size > 0 && (
+            <button
+              onClick={deleteSelectedPlayers}
+              disabled={deleting}
+              className="text-xs bg-mtrred/20 text-red-300 border border-mtrred/40 rounded-lg px-2.5 py-1 hover:bg-mtrred/30 transition disabled:opacity-50"
+            >
+              {deleting ? "جاري الحذف..." : `حذف (${selectedForDelete.size})`}
+            </button>
+          )}
+        </div>
 
         <div className="flex-1 overflow-y-auto space-y-1">
           {players.length === 0 && (
@@ -363,14 +406,24 @@ export default function Page() {
             <button
               key={p.id}
               onClick={() => {
+                if (bulkMode) { toggleSelectForDelete(p.id); return; }
                 setSelectedId(p.id);
                 setTab("overview");
                 if (typeof window !== "undefined" && window.innerWidth < 768) setSidebarOpen(false);
               }}
               className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-right transition ${
-                p.id === selectedId ? "bg-neutral-900 border border-neutral-700" : "border border-transparent hover:bg-neutral-900/50"
+                p.id === selectedId && !bulkMode ? "bg-neutral-900 border border-neutral-700" : "border border-transparent hover:bg-neutral-900/50"
               }`}
             >
+              {bulkMode && (
+                <input
+                  type="checkbox"
+                  checked={selectedForDelete.has(p.id)}
+                  onChange={() => toggleSelectForDelete(p.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="accent-mtrred w-4 h-4 shrink-0"
+                />
+              )}
               <div className="flex-1">
                 <div className="text-sm font-medium">{p.name}</div>
                 <div className="text-[11px] text-neutral-500">
