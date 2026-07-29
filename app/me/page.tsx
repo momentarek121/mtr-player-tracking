@@ -80,7 +80,7 @@ export default function MePage() {
       for (let attempt = 0; attempt < 5 && !created; attempt++) {
         const base = (name.trim().split(" ")[0] || "PLR").replace(/[^a-zA-Zء-ي]/g, "").toUpperCase().slice(0, 4) || "PLR";
         const code = `${base}-${Math.floor(1000 + Math.random() * 9000)}`;
-        const { data, error } = await supabase.from("players").insert({ ...payload, player_code: code }).select().single();
+        const { data, error } = await supabase.from("players").insert({ ...payload, player_code: code, approval_status: "PENDING" }).select().single();
         if (!error) created = data;
         else if (!error.message.includes("player_code")) break;
       }
@@ -126,6 +126,12 @@ export default function MePage() {
       {!player && (
         <div className="bg-mtrred/10 border border-mtrred/30 text-red-200 text-xs rounded-lg px-4 py-3 mb-5">
           مرحبًا! كمّل بياناتك تحت عشان الكوتش يقدر يشوفك ويبدأ يتابع تطورك.
+        </div>
+      )}
+
+      {player && player.approval_status === "PENDING" && (
+        <div className="bg-mtrgold/10 border border-mtrgold/30 text-yellow-200 text-xs rounded-lg px-4 py-3 mb-5">
+          ⏳ بياناتك اتحفظت وبانتظار موافقة المدرب — هتقدر تستخدم كل حاجة عادي، بس هيبان للمدرب في قايمة "طلبات التسجيل" لحد ما يقبلك.
         </div>
       )}
 

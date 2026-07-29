@@ -6,10 +6,12 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const sport = searchParams.get("sport");
   const active = searchParams.get("active");
+  const approvalStatus = searchParams.get("approvalStatus");
 
   let query = supabase.from("players").select("*").order("name");
   if (sport) query = query.eq("sport", sport);
   if (active !== null) query = query.eq("active", active === "true");
+  if (approvalStatus) query = query.eq("approval_status", approvalStatus);
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

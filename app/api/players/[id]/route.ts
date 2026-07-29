@@ -27,6 +27,7 @@ export async function PATCH(
   if (body.stripes !== undefined) update.stripes = body.stripes;
   if (body.notes !== undefined) update.notes = body.notes;
   if (body.active !== undefined) update.active = body.active;
+  if (body.approvalStatus !== undefined) update.approval_status = body.approvalStatus;
   update.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase.from("players").update(update).eq("id", params.id).select().single();

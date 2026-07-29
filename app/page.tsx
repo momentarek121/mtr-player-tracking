@@ -36,6 +36,7 @@ export default function Page() {
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [playerSearch, setPlayerSearch] = useState("");
+  const [pendingCount, setPendingCount] = useState(0);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
     "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests"
@@ -43,10 +44,16 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
 
   const loadPlayers = async () => {
-    const res = await fetch("/api/players");
+    const res = await fetch("/api/players?approvalStatus=APPROVED");
     const json = await res.json();
     setPlayers(json.players || []);
     if (!selectedId && json.players?.length) setSelectedId(json.players[0].id);
+  };
+
+  const loadPendingCount = async () => {
+    const res = await fetch("/api/players?approvalStatus=PENDING");
+    const json = await res.json();
+    setPendingCount((json.players || []).length);
   };
 
   const loadSkillCategories = async () => {
@@ -198,7 +205,7 @@ export default function Page() {
 
   useEffect(() => {
     (async () => {
-      await Promise.all([loadPlayers(), loadSkillCategories()]);
+      await Promise.all([loadPlayers(), loadSkillCategories(), loadPendingCount()]);
       setLoading(false);
     })();
   }, []);
@@ -308,6 +315,18 @@ export default function Page() {
           className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
         >
           📊 لوحة الفريق
+        </Link>
+
+        <Link
+          href="/registrations"
+          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition relative"
+        >
+          📝 طلبات التسجيل
+          {pendingCount > 0 && (
+            <span className="bg-mtrred text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+              {pendingCount}
+            </span>
+          )}
         </Link>
 
         <button
