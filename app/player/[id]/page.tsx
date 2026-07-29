@@ -145,6 +145,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
         <div>
           <div className="text-2xl font-semibold">{player.name}</div>
           <div className="text-neutral-400 text-sm mt-1">
+            {player.player_code && <span className="text-neutral-600">{player.player_code} · </span>}
             {player.sport} · حزام {BELT_LABELS[player.current_belt]} · {player.weight_kg} كجم
           </div>
         </div>

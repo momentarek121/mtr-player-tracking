@@ -76,8 +76,15 @@ export default function MePage() {
       const { data } = await supabase.from("players").update(payload).eq("id", player.id).select().single();
       setPlayer(data);
     } else {
-      const { data } = await supabase.from("players").insert(payload).select().single();
-      setPlayer(data);
+      let created = null;
+      for (let attempt = 0; attempt < 5 && !created; attempt++) {
+        const base = (name.trim().split(" ")[0] || "PLR").replace(/[^a-zA-Zء-ي]/g, "").toUpperCase().slice(0, 4) || "PLR";
+        const code = `${base}-${Math.floor(1000 + Math.random() * 9000)}`;
+        const { data, error } = await supabase.from("players").insert({ ...payload, player_code: code }).select().single();
+        if (!error) created = data;
+        else if (!error.message.includes("player_code")) break;
+      }
+      setPlayer(created);
     }
     setSaving(false);
     setSaved(true);
@@ -119,6 +126,13 @@ export default function MePage() {
       {!player && (
         <div className="bg-mtrred/10 border border-mtrred/30 text-red-200 text-xs rounded-lg px-4 py-3 mb-5">
           مرحبًا! كمّل بياناتك تحت عشان الكوتش يقدر يشوفك ويبدأ يتابع تطورك.
+        </div>
+      )}
+
+      {player && (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2 mb-4 text-center">
+          <div className="text-[11px] text-neutral-500">كودك الشخصي</div>
+          <div className="text-sm font-mono font-semibold text-mtrgold">{player.player_code}</div>
         </div>
       )}
 

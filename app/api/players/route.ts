@@ -16,6 +16,16 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ players: data });
 }
 
+function generatePlayerCode(name: string) {
+  const base =
+    (name.trim().split(" ")[0] || "PLR")
+      .replace(/[^a-zA-Zء-ي]/g, "")
+      .toUpperCase()
+      .slice(0, 4) || "PLR";
+  const suffix = Math.floor(1000 + Math.random() * 9000);
+  return `${base}-${suffix}`;
+}
+
 // POST /api/players — create a new player
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -28,19 +38,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data, error } = await supabase
-    .from("players")
-    .insert({
-      name,
-      dob,
-      weight_kg: weightKg,
-      height_cm: heightCm,
-      sport,
-      current_belt: currentBelt ?? "WHITE",
-    })
-    .select()
-    .single();
+  // Retry a few times in the rare case of a code collision (unique constraint)
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data, error } = await supabase
+      .from("players")
+      .insert({
+        name,
+        dob,
+        weight_kg: weightKg,
+        height_cm: heightCm,
+        sport,
+        current_belt: currentBelt ?? "WHITE",
+        player_code: generatePlayerCode(name),
+      })
+      .select()
+      .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ player: data }, { status: 201 });
+    if (!error) return NextResponse.json({ player: data }, { status: 201 });
+    if (!error.message.includes("player_code")) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    // else: code collision, loop and retry with a new code
+  }
+
+  return NextResponse.json({ error: "تعذر إنشاء كود فريد للاعب، حاول تاني" }, { status: 500 });
 }

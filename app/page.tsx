@@ -34,6 +34,8 @@ export default function Page() {
   const [exercises, setExercises] = useState<any[]>([]);
   const [feedback, setFeedback] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [playerSearch, setPlayerSearch] = useState("");
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
     "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests"
@@ -268,8 +270,23 @@ export default function Page() {
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen">
-      <aside className="w-full md:w-72 border-b md:border-b-0 md:border-l border-neutral-800 p-4 flex flex-col shrink-0 max-h-[45vh] md:max-h-none">
-        <div className="flex items-center gap-3 mb-6 px-1">
+      <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-neutral-800">
+        <button
+          onClick={() => setSidebarOpen((o) => !o)}
+          className="w-8 h-8 flex items-center justify-center rounded-lg border border-neutral-700 text-lg"
+        >
+          ☰
+        </button>
+        <div className="text-sm font-semibold truncate">
+          {selectedPlayer ? selectedPlayer.name : "نظام تتبع اللاعبين"}
+        </div>
+        <div className="w-8" />
+      </div>
+
+      <aside
+        className={`${sidebarOpen ? "flex" : "hidden"} md:flex w-full md:w-72 border-b md:border-b-0 md:border-l border-neutral-800 p-4 flex-col shrink-0 max-h-[45vh] md:max-h-none`}
+      >
+        <div className="hidden md:flex items-center gap-3 mb-6 px-1">
           <div className="w-10 h-10 rounded-lg bg-mtrred flex items-center justify-center font-bold text-sm">
             MTR
           </div>
@@ -299,10 +316,17 @@ export default function Page() {
             navigator.clipboard.writeText(url);
             alert("اتنسخ لينك تسجيل دخول اللاعبين:\n" + url);
           }}
-          className="mb-4 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+          className="mb-3 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
         >
           🔑 نسخ لينك تسجيل دخول اللاعبين
         </button>
+
+        <input
+          value={playerSearch}
+          onChange={(e) => setPlayerSearch(e.target.value)}
+          placeholder="دور بالاسم أو الكود..."
+          className="mb-3 w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm"
+        />
 
         <div className="flex-1 overflow-y-auto space-y-1">
           {players.length === 0 && (
@@ -310,17 +334,30 @@ export default function Page() {
               مفيش لاعبين لسه — ابدأ بإضافة أول لاعب.
             </div>
           )}
-          {players.map((p) => (
+          {players
+            .filter((p) => {
+              const q = playerSearch.trim().toLowerCase();
+              if (!q) return true;
+              return p.name?.toLowerCase().includes(q) || p.player_code?.toLowerCase().includes(q);
+            })
+            .map((p) => (
             <button
               key={p.id}
-              onClick={() => { setSelectedId(p.id); setTab("overview"); }}
+              onClick={() => {
+                setSelectedId(p.id);
+                setTab("overview");
+                if (typeof window !== "undefined" && window.innerWidth < 768) setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-right transition ${
                 p.id === selectedId ? "bg-neutral-900 border border-neutral-700" : "border border-transparent hover:bg-neutral-900/50"
               }`}
             >
               <div className="flex-1">
                 <div className="text-sm font-medium">{p.name}</div>
-                <div className="text-[11px] text-neutral-500">{p.sport} · حزام {BELT_LABELS[p.current_belt]}</div>
+                <div className="text-[11px] text-neutral-500">
+                  {p.player_code && <span className="text-neutral-600">{p.player_code} · </span>}
+                  {p.sport} · حزام {BELT_LABELS[p.current_belt]}
+                </div>
               </div>
             </button>
           ))}
@@ -355,6 +392,7 @@ export default function Page() {
               <div>
                 <div className="text-xl md:text-2xl font-semibold">{selectedPlayer.name}</div>
                 <div className="text-neutral-400 text-sm mt-1">
+                  {selectedPlayer.player_code && <span className="text-neutral-600">{selectedPlayer.player_code} · </span>}
                   {selectedPlayer.sport} · حزام {BELT_LABELS[selectedPlayer.current_belt]} · {selectedPlayer.weight_kg} كجم
                 </div>
               </div>
