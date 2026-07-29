@@ -22,18 +22,49 @@ export default function MePage() {
   const [weight, setWeight] = useState("");
 
   useEffect(() => {
-    (async () => {
-      const { data: { user: u } } = await supabase.auth.getUser();
-      if (!u) { window.location.href = "/login"; return; }
-      setUser(u);
+    let settled = false;
 
+    const loadForUser = async (u: any) => {
+      if (settled) return;
+      settled = true;
+      setUser(u);
       const { data: p } = await supabase.from("players").select("*").eq("auth_user_id", u.id).maybeSingle();
       if (p) {
         setPlayer(p);
         setName(p.name); setDob(p.dob); setSport(p.sport); setBelt(p.current_belt); setWeight(p.weight_kg?.toString() || "");
       }
       setLoading(false);
+    };
+
+    // Listen for the auth event first — this fires reliably once Supabase
+    // finishes parsing the OAuth redirect (avoids a race where getUser()
+    // is checked before the session from Google has been established).
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) loadForUser(session.user);
+    });
+
+    // Also check immediately in case a session already exists (e.g. a
+    // normal page refresh, not a fresh OAuth redirect).
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        loadForUser(session.user);
+      } else {
+        // Give the OAuth redirect a moment to finish before giving up.
+        setTimeout(async () => {
+          if (settled) return;
+          const { data: { session: s2 } } = await supabase.auth.getSession();
+          if (s2?.user) {
+            loadForUser(s2.user);
+          } else {
+            settled = true;
+            window.location.href = "/login";
+          }
+        }, 1500);
+      }
     })();
+
+    return () => { sub.subscription.unsubscribe(); };
   }, []);
 
   const save = async () => {
