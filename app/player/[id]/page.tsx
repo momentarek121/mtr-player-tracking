@@ -277,6 +277,8 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
           </div>
         )}
 
+        <PlayerChat player={player} />
+
         <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
           <div className="text-sm font-semibold text-neutral-300 mb-1">ابعت ملاحظة أو طلب للمدرب</div>
           <div className="text-[11px] text-neutral-500 mb-3">مثلاً: طلب تعديل في الجدول، ملاحظة عن إصابة، أو أي حاجة عايز توصلها</div>
@@ -294,6 +296,70 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       </div>
 
       <div className="text-center text-[11px] text-neutral-600 mt-8">MTR Team — نظام تتبع اللاعبين</div>
+    </div>
+  );
+}
+
+function PlayerChat({ player }: { player: any }) {
+  const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  const send = async () => {
+    if (!input.trim() || sending) return;
+    const userMsg = { role: "user", content: input.trim() };
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
+    setInput("");
+    setSending(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId: player.id, messages: nextMessages, audience: "player" }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); setSending(false); return; }
+      setMessages([...nextMessages, { role: "assistant", content: data.reply }]);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 flex flex-col h-[420px]">
+      <div className="text-sm font-semibold text-neutral-300 mb-3">اسأل مساعدك الذكي</div>
+      <div className="flex-1 overflow-y-auto space-y-3 mb-3">
+        {messages.length === 0 && (
+          <div className="text-neutral-500 text-xs text-center py-8 leading-relaxed">
+            اسأل أي حاجة عن تطورك — مثلاً: "إزاي أحسّن دفاع التيك داون بتاعي؟"
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={`text-sm rounded-lg px-3 py-2 max-w-[85%] ${m.role === "user" ? "bg-mtrred/20 mr-0 ml-auto text-right" : "bg-neutral-900 ml-0"}`}>
+            {m.content}
+          </div>
+        ))}
+        {sending && <div className="text-neutral-500 text-xs">بيفكر...</div>}
+        {error && <div className="text-red-400 text-xs">{error}</div>}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="اكتب سؤالك..."
+          className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-sm"
+        />
+        <button onClick={send} disabled={sending} className="bg-mtrred rounded-lg px-4 text-sm font-semibold disabled:opacity-40">
+          إرسال
+        </button>
+      </div>
     </div>
   );
 }

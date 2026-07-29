@@ -436,7 +436,7 @@ export default function Page() {
             {tab === "notes" && <NotesTab notes={notes} onAdd={addNote} />}
             {tab === "files" && <AttachmentsTab attachments={attachments} onUpload={uploadFile} />}
             {tab === "assistant" && (
-              <AssistantTab player={selectedPlayer} assessments={assessments} roadmap={roadmap} skillCategories={skillCategories} />
+              <AssistantTab player={selectedPlayer} audience="coach" />
             )}
           </div>
         )}
@@ -724,67 +724,68 @@ function AttachmentsTab({ attachments, onUpload }: { attachments: any[]; onUploa
 // data (roadmap + latest domain scores) and writes a plain-language
 // summary + focus plan. Swap this for a real Claude-powered chat later
 // by calling a server route that has ANTHROPIC_API_KEY set.
-function AssistantTab({ player, assessments, roadmap, skillCategories }: any) {
-  const summary = useMemo(() => {
-    const latestPerSkill = new Map<string, number>();
-    [...assessments].sort((a: any, b: any) => (a.date < b.date ? -1 : 1)).forEach((a: any) => {
-      latestPerSkill.set(a.skill_category_id, a.score);
-    });
+function AssistantTab({ player, audience = "coach" }: { player: any; audience?: "coach" | "player" }) {
+  const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
 
-    const domainScores: Record<string, number[]> = {};
-    skillCategories.forEach((s: any) => {
-      const score = latestPerSkill.get(s.id);
-      if (score === undefined) return;
-      if (!domainScores[s.domain]) domainScores[s.domain] = [];
-      domainScores[s.domain].push(score);
-    });
+  const send = async () => {
+    if (!input.trim() || sending) return;
+    const userMsg = { role: "user", content: input.trim() };
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
+    setInput("");
+    setSending(true);
+    setError("");
 
-    const domainAverages = Object.entries(domainScores).map(([domain, scores]) => ({
-      domain,
-      avg: scores.reduce((a, b) => a + b, 0) / scores.length,
-    }));
-
-    if (domainAverages.length === 0) return null;
-
-    const strongest = domainAverages.reduce((a, b) => (a.avg > b.avg ? a : b));
-    const weakest = domainAverages.reduce((a, b) => (a.avg < b.avg ? a : b));
-    const topPriority = [...roadmap].sort((a: any, b: any) => a.priority - b.priority)[0];
-
-    return { strongest, weakest, topPriority, totalOpen: roadmap.length };
-  }, [assessments, roadmap, skillCategories]);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId: player.id, messages: nextMessages, audience }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); setSending(false); return; }
+      setMessages([...nextMessages, { role: "assistant", content: data.reply }]);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
-    <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 max-w-lg">
-      <div className="text-sm font-semibold text-neutral-300 mb-4">ملخص المدرب الآلي</div>
+    <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 flex flex-col h-[500px] max-w-lg">
+      <div className="text-sm font-semibold text-neutral-300 mb-3">اسأل المساعد عن {player.name}</div>
 
-      {!summary ? (
-        <div className="text-neutral-500 text-xs text-center py-8">
-          سجّل تقييمات للاعب الأول عشان يظهر التحليل.
-        </div>
-      ) : (
-        <div className="space-y-3 text-sm text-neutral-200 leading-relaxed">
-          <p>
-            <b>{player.name}</b> أقوى نقطة عنده حاليًا في محور{" "}
-            <span style={{ color: DOMAINS[summary.strongest.domain]?.color }}>
-              {DOMAINS[summary.strongest.domain]?.label}
-            </span>{" "}
-            (متوسط {summary.strongest.avg.toFixed(1)}/10)، بينما أضعف محور هو{" "}
-            <span style={{ color: DOMAINS[summary.weakest.domain]?.color }}>
-              {DOMAINS[summary.weakest.domain]?.label}
-            </span>{" "}
-            (متوسط {summary.weakest.avg.toFixed(1)}/10).
-          </p>
+      <div className="flex-1 overflow-y-auto space-y-3 mb-3">
+        {messages.length === 0 && (
+          <div className="text-neutral-500 text-xs text-center py-8 leading-relaxed">
+            اسأل أي حاجة — مثلاً: "اقترحلي تمارين للأسبوع الجاي" أو "عمل خطة غذائية قبل بطولة"
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={`text-sm rounded-lg px-3 py-2 max-w-[85%] ${m.role === "user" ? "bg-mtrred/20 mr-0 ml-auto text-right" : "bg-neutral-900 ml-0"}`}>
+            {m.content}
+          </div>
+        ))}
+        {sending && <div className="text-neutral-500 text-xs">بيفكر...</div>}
+        {error && <div className="text-red-400 text-xs">{error}</div>}
+      </div>
 
-          {summary.totalOpen > 0 ? (
-            <p>
-              فيه <b>{summary.totalOpen}</b> نقطة تطوير مفتوحة. الأولوية القصوى دلوقتي:{" "}
-              <b>{summary.topPriority?.title}</b> — {summary.topPriority?.recommendation}
-            </p>
-          ) : (
-            <p>مفيش نقاط ضعف واضحة مسجّلة حاليًا — استمر على نفس الوتيرة وسجّل تقييمات دورية.</p>
-          )}
-        </div>
-      )}
+      <div className="flex gap-2">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="اكتب سؤالك..."
+          className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-sm"
+        />
+        <button onClick={send} disabled={sending} className="bg-mtrred rounded-lg px-4 text-sm font-semibold disabled:opacity-40">
+          إرسال
+        </button>
+      </div>
     </div>
   );
 }
