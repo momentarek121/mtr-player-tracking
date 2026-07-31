@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useCoachAuth } from "@/lib/useCoachAuth";
 
 const DOMAINS: Record<string, { label: string; color: string }> = {
   TECHNICAL: { label: "فني", color: "#C8102E" },
@@ -15,14 +16,23 @@ const BELT_LABELS: Record<string, string> = {
 };
 
 export default function TeamDashboard() {
+  const { loading: authLoading, coach, denied } = useCoachAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!coach) return;
     fetch("/api/team-dashboard")
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); });
-  }, []);
+  }, [coach]);
+
+  if (authLoading) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500">جاري التحقق من الصلاحيات...</div>;
+  }
+  if (denied) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500">مفيش صلاحية وصول.</div>;
+  }
 
   if (loading || !data) {
     return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500">جاري التحميل...</div>;

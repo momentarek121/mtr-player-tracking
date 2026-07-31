@@ -32,6 +32,9 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const [schedule, setSchedule] = useState<any[]>([]);
   const [meals, setMeals] = useState<any[]>([]);
   const [exercises, setExercises] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [checkinMsg, setCheckinMsg] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -43,13 +46,14 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       if (!p) { setNotFound(true); setLoading(false); return; }
       setPlayer(p);
 
-      const [{ data: a }, { data: r }, { data: f }, { data: sch }, { data: mls }, { data: exs }] = await Promise.all([
+      const [{ data: a }, { data: r }, { data: f }, { data: sch }, { data: mls }, { data: exs }, { data: att }] = await Promise.all([
         supabase.from("skill_assessments").select("*, skill_categories(name,domain)").eq("player_id", playerId).order("date"),
         supabase.from("player_roadmap_items").select("*").eq("player_id", playerId).eq("status", "OPEN").order("priority"),
         supabase.from("player_attachments").select("*").eq("player_id", playerId).order("uploaded_at", { ascending: false }),
         supabase.from("player_schedule").select("*").eq("player_id", playerId),
         supabase.from("player_meals").select("*").eq("player_id", playerId).order("sort_order"),
         supabase.from("player_exercises").select("*").eq("player_id", playerId).order("assigned_at", { ascending: false }),
+        supabase.from("player_attendance").select("*").eq("player_id", playerId).order("date", { ascending: false }).limit(10),
       ]);
       setAssessments(a || []);
       setRoadmap(r || []);
@@ -57,6 +61,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       setSchedule(sch || []);
       setMeals(mls || []);
       setExercises(exs || []);
+      setAttendance(att || []);
       setLoading(false);
     })();
   }, [playerId]);
@@ -64,6 +69,26 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const toggleExercise = async (id: string, completed: boolean) => {
     await supabase.from("player_exercises").update({ completed, completed_at: completed ? new Date().toISOString() : null }).eq("id", id);
     setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, completed } : e)));
+  };
+
+  const WEEKDAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const alreadyCheckedInToday = attendance.some((a: any) => a.date === todayIso);
+
+  const checkInToday = async () => {
+    setCheckingIn(true);
+    setCheckinMsg("");
+    const dayOfWeek = WEEKDAYS_AR[new Date().getDay()];
+    const { error } = await supabase
+      .from("player_attendance")
+      .insert({ player_id: playerId, date: todayIso, day_of_week: dayOfWeek, marked_by: "PLAYER" });
+    if (error) {
+      setCheckinMsg(error.message.includes("duplicate") ? "مسجّل حضورك النهارده بالفعل ✓" : "حصل خطأ، جرب تاني");
+    } else {
+      setAttendance((prev) => [{ id: Date.now().toString(), date: todayIso, day_of_week: dayOfWeek, marked_by: "PLAYER" }, ...prev]);
+      setCheckinMsg("✓ اتسجل حضورك النهارده");
+    }
+    setCheckingIn(false);
   };
 
   const submitFeedback = async () => {
@@ -294,6 +319,29 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
             </div>
           </div>
         )}
+
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+          <div className="text-sm font-semibold text-neutral-300 mb-3">حضورك النهارده</div>
+          <button
+            onClick={checkInToday}
+            disabled={checkingIn || alreadyCheckedInToday}
+            className="w-full bg-mtrred rounded-lg py-3 text-sm font-semibold disabled:opacity-40 disabled:bg-neutral-800"
+          >
+            {alreadyCheckedInToday ? "✓ اتسجل حضورك النهارده" : checkingIn ? "..." : `سجّل حضورك — ${new Date().toLocaleDateString("ar-EG", { weekday: "long" })}`}
+          </button>
+          {checkinMsg && <div className="text-xs text-neutral-400 mt-2 text-center">{checkinMsg}</div>}
+
+          {attendance.length > 0 && (
+            <div className="mt-4 space-y-1">
+              <div className="text-[11px] text-neutral-500 mb-1">آخر أيام حضور</div>
+              {attendance.slice(0, 6).map((a: any) => (
+                <div key={a.id} className="text-xs text-neutral-400 bg-neutral-900 rounded-lg px-3 py-1.5">
+                  {a.day_of_week} · {a.date}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <PlayerChat player={player} />
 

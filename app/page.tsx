@@ -7,6 +7,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { supabase } from "@/lib/supabase";
+import { useCoachAuth } from "@/lib/useCoachAuth";
 
 const DOMAINS: Record<string, { label: string; color: string }> = {
   TECHNICAL: { label: "فني", color: "#C8102E" },
@@ -20,6 +21,7 @@ const BELT_LABELS: Record<string, string> = {
 };
 
 export default function Page() {
+  const { loading: authLoading, coach, denied } = useCoachAuth();
   const [players, setPlayers] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [skillCategories, setSkillCategories] = useState<any[]>([]);
@@ -33,6 +35,8 @@ export default function Page() {
   const [meals, setMeals] = useState<any[]>([]);
   const [exercises, setExercises] = useState<any[]>([]);
   const [feedback, setFeedback] = useState<any[]>([]);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [playerSearch, setPlayerSearch] = useState("");
@@ -42,7 +46,7 @@ export default function Page() {
   const [deleting, setDeleting] = useState(false);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
-    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests"
+    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance"
   >("overview");
   const [loading, setLoading] = useState(true);
 
@@ -66,7 +70,7 @@ export default function Page() {
   };
 
   const loadPlayerData = async (playerId: string) => {
-    const [a, r, n, f, s, c, sch, mls, exs, fb] = await Promise.all([
+    const [a, r, n, f, s, c, sch, mls, exs, fb, subs, att] = await Promise.all([
       fetch(`/api/players/${playerId}/analytics`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/roadmap`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/notes`).then((r) => r.json()),
@@ -77,6 +81,8 @@ export default function Page() {
       fetch(`/api/players/${playerId}/nutrition`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/exercises`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/feedback`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/subscriptions`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/attendance`).then((r) => r.json()),
     ]);
     setAnalytics(a);
     setRoadmap(r.roadmap || []);
@@ -88,6 +94,8 @@ export default function Page() {
     setMeals(mls.meals || []);
     setExercises(exs.exercises || []);
     setFeedback(fb.feedback || []);
+    setSubscriptions(subs.subscriptions || []);
+    setAttendance(att.attendance || []);
   };
 
   const addScheduleItem = async (dayOfWeek: string, timeLabel: string, activity: string) => {
@@ -149,6 +157,44 @@ export default function Page() {
     await loadPlayerData(selectedId);
   };
 
+  const addSubscription = async (planName: string, amount: string, startDate: string, endDate: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/subscriptions`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ planName, amount: amount ? Number(amount) : null, startDate, endDate }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const deleteSubscription = async (itemId: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/subscriptions?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
+  const addAttendanceManual = async (date: string) => {
+    if (!selectedId) return;
+    const res = await fetch(`/api/players/${selectedId}/attendance`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, markedBy: "COACH" }),
+    });
+    const json = await res.json();
+    if (json.error) { alert(json.error); return; }
+    await loadPlayerData(selectedId);
+  };
+  const editAttendanceDate = async (itemId: string, date: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/attendance`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId, date }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const deleteAttendance = async (itemId: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/attendance?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
   const addCurriculumItem = async (title: string) => {
     if (!selectedPlayerBelt) return;
     await fetch("/api/curriculum-items", {
@@ -207,11 +253,12 @@ export default function Page() {
   };
 
   useEffect(() => {
+    if (!coach) return;
     (async () => {
       await Promise.all([loadPlayers(), loadSkillCategories(), loadPendingCount()]);
       setLoading(false);
     })();
-  }, []);
+  }, [coach]);
 
   useEffect(() => {
     if (selectedId) loadPlayerData(selectedId);
@@ -292,6 +339,33 @@ export default function Page() {
   const selectedPlayer = players.find((p) => p.id === selectedId);
   const selectedPlayerBelt = selectedPlayer?.current_belt;
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500">
+        جاري التحقق من الصلاحيات...
+      </div>
+    );
+  }
+
+  if (denied) {
+    return (
+      <div dir="rtl" className="min-h-screen flex items-center justify-center p-4">
+        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-8 max-w-sm text-center">
+          <div className="text-lg font-semibold mb-2">🚫 مفيش صلاحية</div>
+          <div className="text-sm text-neutral-400 leading-relaxed mb-4">
+            الحساب اللي داخل بيه مش مضاف كمدرب في النظام. لو المفروض يكون عندك صلاحية، تواصل مع الأدمن.
+          </div>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); window.location.href = "/admin-login"; }}
+            className="text-xs text-neutral-500 hover:text-neutral-300 transition"
+          >
+            تسجيل خروج وتجربة حساب تاني
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500">
@@ -360,10 +434,25 @@ export default function Page() {
             navigator.clipboard.writeText(url);
             alert("اتنسخ لينك تسجيل دخول اللاعبين:\n" + url);
           }}
-          className="mb-3 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
         >
           🔑 نسخ لينك تسجيل دخول اللاعبين
         </button>
+
+        <div className="flex gap-2 mb-3">
+          <Link
+            href="/coaches"
+            className="flex-1 flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 rounded-lg py-2 text-xs hover:border-neutral-500 transition"
+          >
+            👥 المدربين
+          </Link>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); window.location.href = "/admin-login"; }}
+            className="flex-1 flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 rounded-lg py-2 text-xs hover:border-neutral-500 transition"
+          >
+            🚪 خروج
+          </button>
+        </div>
 
         <input
           value={playerSearch}
@@ -501,6 +590,8 @@ export default function Page() {
                 ["nutrition", "التغذية"],
                 ["exercises", "تمارين"],
                 ["requests", "طلبات اللاعب"],
+                ["subscription", "الاشتراك"],
+                ["attendance", "الحضور"],
                 ["notes", "ملاحظات"],
                 ["files", "ملفات وصور"],
                 ["assistant", "المساعد"],
@@ -543,6 +634,12 @@ export default function Page() {
               <ExercisesTab exercises={exercises} onAdd={addExercise} onToggle={toggleExercise} onDelete={deleteExercise} />
             )}
             {tab === "requests" && <RequestsTab feedback={feedback} onReply={replyFeedback} />}
+            {tab === "subscription" && (
+              <SubscriptionTab subscriptions={subscriptions} onAdd={addSubscription} onDelete={deleteSubscription} />
+            )}
+            {tab === "attendance" && (
+              <AttendanceTab attendance={attendance} onAdd={addAttendanceManual} onEdit={editAttendanceDate} onDelete={deleteAttendance} />
+            )}
             {tab === "notes" && <NotesTab notes={notes} onAdd={addNote} />}
             {tab === "files" && <AttachmentsTab attachments={attachments} onUpload={uploadFile} />}
             {tab === "assistant" && (
@@ -1056,6 +1153,116 @@ function RequestsTab({ feedback, onReply }: { feedback: any[]; onReply: (id: str
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function SubscriptionTab({ subscriptions, onAdd, onDelete }: { subscriptions: any[]; onAdd: (p: string, a: string, s: string, e: string) => void; onDelete: (id: string) => void }) {
+  const [planName, setPlanName] = useState("شهري");
+  const [amount, setAmount] = useState("");
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState("");
+
+  const today = new Date().toISOString().slice(0, 10);
+  const submit = () => {
+    if (!endDate) return;
+    onAdd(planName, amount, startDate, endDate);
+    setAmount(""); setEndDate("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-2">
+        <div className="flex gap-1.5 flex-wrap">
+          {["شهري", "ربع سنوي", "نصف سنوي", "سنوي"].map((p) => (
+            <button key={p} onClick={() => setPlanName(p)} className={`px-2.5 py-1 rounded-md text-xs border ${planName === p ? "bg-mtrred border-mtrred" : "border-neutral-700 text-neutral-400"}`}>{p}</button>
+          ))}
+        </div>
+        <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" placeholder="المبلغ (اختياري)" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <label className="block text-[11px] text-neutral-500 mb-1">من</label>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div className="flex-1">
+            <label className="block text-[11px] text-neutral-500 mb-1">لحد</label>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <button onClick={submit} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold">إضافة اشتراك</button>
+      </div>
+
+      <div className="space-y-2">
+        {subscriptions.map((s: any) => {
+          const expired = s.end_date < today;
+          return (
+            <div key={s.id} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium flex items-center gap-2">
+                  {s.plan_name}
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${expired ? "bg-mtrred/15 text-red-300" : "bg-green-500/15 text-green-300"}`}>
+                    {expired ? "منتهي" : "فعّال"}
+                  </span>
+                </div>
+                <div className="text-[11px] text-neutral-500 mt-1">
+                  من {s.start_date} لحد {s.end_date}{s.amount ? ` · ${s.amount} جنيه` : ""}
+                </div>
+              </div>
+              <button onClick={() => onDelete(s.id)} className="text-neutral-600 hover:text-red-400 text-xs">حذف</button>
+            </div>
+          );
+        })}
+        {subscriptions.length === 0 && <div className="text-neutral-500 text-xs text-center py-8">مفيش اشتراكات مسجّلة لسه.</div>}
+      </div>
+    </div>
+  );
+}
+
+function AttendanceTab({ attendance, onAdd, onEdit, onDelete }: { attendance: any[]; onAdd: (d: string) => void; onEdit: (id: string, d: string) => void; onDelete: (id: string) => void }) {
+  const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState("");
+
+  const last30 = attendance.filter((a: any) => {
+    const diff = (Date.now() - new Date(a.date).getTime()) / (1000 * 60 * 60 * 24);
+    return diff <= 30;
+  }).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+        <div className="text-xs text-neutral-500 mb-1">الحضور آخر 30 يوم</div>
+        <div className="text-2xl font-bold">{last30} يوم</div>
+      </div>
+
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex gap-2">
+        <input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <button onClick={() => onAdd(manualDate)} className="bg-mtrred rounded-lg px-4 text-sm font-semibold shrink-0">تسجيل حضور يدوي</button>
+      </div>
+
+      <div className="space-y-1.5">
+        {attendance.map((a: any) => (
+          <div key={a.id} className="flex items-center justify-between bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5">
+            {editingId === a.id ? (
+              <div className="flex items-center gap-2 flex-1">
+                <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-2 py-1 text-xs" />
+                <button onClick={() => { onEdit(a.id, editDate); setEditingId(null); }} className="text-xs text-green-400">حفظ</button>
+                <button onClick={() => setEditingId(null)} className="text-xs text-neutral-500">إلغاء</button>
+              </div>
+            ) : (
+              <>
+                <div className="text-sm">{a.day_of_week} · {a.date}</div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-neutral-600">{a.marked_by === "PLAYER" ? "سجّله اللاعب" : "سجّله الكوتش"}</span>
+                  <button onClick={() => { setEditingId(a.id); setEditDate(a.date); }} className="text-xs text-neutral-500 hover:text-neutral-300">تعديل</button>
+                  <button onClick={() => onDelete(a.id)} className="text-xs text-neutral-600 hover:text-red-400">حذف</button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+        {attendance.length === 0 && <div className="text-neutral-500 text-xs text-center py-8">مفيش حضور مسجّل لسه.</div>}
+      </div>
     </div>
   );
 }

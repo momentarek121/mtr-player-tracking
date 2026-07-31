@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useCoachAuth } from "@/lib/useCoachAuth";
 
 const BELT_LABELS: Record<string, string> = {
   WHITE: "أبيض", BLUE: "أزرق", PURPLE: "بنفسجي", BROWN: "بني", BLACK: "أسود",
 };
 
 export default function RegistrationsPage() {
+  const { loading: authLoading, coach, denied } = useCoachAuth();
   const [pending, setPending] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -22,7 +24,14 @@ export default function RegistrationsPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (coach) load(); }, [coach]);
+
+  if (authLoading) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500">جاري التحقق من الصلاحيات...</div>;
+  }
+  if (denied) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500">مفيش صلاحية وصول.</div>;
+  }
 
   const approve = async (id: string) => {
     await supabase.from("players").update({ approval_status: "APPROVED" }).eq("id", id);
