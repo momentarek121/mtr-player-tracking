@@ -37,6 +37,7 @@ export default function Page() {
   const [feedback, setFeedback] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [goals, setGoals] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [playerSearch, setPlayerSearch] = useState("");
@@ -46,7 +47,7 @@ export default function Page() {
   const [deleting, setDeleting] = useState(false);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
-    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance"
+    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals"
   >("overview");
   const [loading, setLoading] = useState(true);
 
@@ -70,7 +71,7 @@ export default function Page() {
   };
 
   const loadPlayerData = async (playerId: string) => {
-    const [a, r, n, f, s, c, sch, mls, exs, fb, subs, att] = await Promise.all([
+    const [a, r, n, f, s, c, sch, mls, exs, fb, subs, att, gls] = await Promise.all([
       fetch(`/api/players/${playerId}/analytics`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/roadmap`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/notes`).then((r) => r.json()),
@@ -83,6 +84,7 @@ export default function Page() {
       fetch(`/api/players/${playerId}/feedback`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/subscriptions`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/attendance`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/goals`).then((r) => r.json()),
     ]);
     setAnalytics(a);
     setRoadmap(r.roadmap || []);
@@ -96,6 +98,7 @@ export default function Page() {
     setFeedback(fb.feedback || []);
     setSubscriptions(subs.subscriptions || []);
     setAttendance(att.attendance || []);
+    setGoals(gls.goals || []);
   };
 
   const addScheduleItem = async (dayOfWeek: string, timeLabel: string, activity: string) => {
@@ -192,6 +195,36 @@ export default function Page() {
   const deleteAttendance = async (itemId: string) => {
     if (!selectedId) return;
     await fetch(`/api/players/${selectedId}/attendance?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
+  const addGoal = async (title: string, description: string, targetDate: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/goals`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, description, targetDate }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const toggleGoal = async (itemId: string, status: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/goals`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId, status }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const editGoalDate = async (itemId: string, targetDate: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/goals`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId, targetDate }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const deleteGoal = async (itemId: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/goals?itemId=${itemId}`, { method: "DELETE" });
     await loadPlayerData(selectedId);
   };
 
@@ -439,6 +472,13 @@ export default function Page() {
           🔑 نسخ لينك تسجيل دخول اللاعبين
         </button>
 
+        <Link
+          href="/take-attendance"
+          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+        >
+          ✅ أخذ الحضور
+        </Link>
+
         <div className="flex gap-2 mb-3">
           <Link
             href="/coaches"
@@ -585,6 +625,7 @@ export default function Page() {
                 ["overview", "نظرة عامة"],
                 ["assess", "تسجيل تقييم"],
                 ["roadmap", "خطة التطوير"],
+                ["goals", "أهداف بتاريخ"],
                 ["curriculum", "متطلبات الحزام"],
                 ["schedule", "الجدول"],
                 ["nutrition", "التغذية"],
@@ -619,6 +660,9 @@ export default function Page() {
               />
             )}
             {tab === "roadmap" && <RoadmapTab roadmap={roadmap} />}
+            {tab === "goals" && (
+              <GoalsTab goals={goals} onAdd={addGoal} onToggle={toggleGoal} onEditDate={editGoalDate} onDelete={deleteGoal} />
+            )}
             {tab === "curriculum" && (
               <CurriculumTab
                 curriculum={curriculum}
@@ -643,7 +687,7 @@ export default function Page() {
             {tab === "notes" && <NotesTab notes={notes} onAdd={addNote} />}
             {tab === "files" && <AttachmentsTab attachments={attachments} onUpload={uploadFile} />}
             {tab === "assistant" && (
-              <AssistantTab player={selectedPlayer} audience="coach" />
+              <AssistantTab player={selectedPlayer} audience="coach" onDataChanged={() => loadPlayerData(selectedPlayer.id)} />
             )}
           </div>
         )}
@@ -839,6 +883,92 @@ function RoadmapTab({ roadmap }: { roadmap: any[] }) {
   );
 }
 
+function GoalsTab({
+  goals, onAdd, onToggle, onEditDate, onDelete,
+}: {
+  goals: any[];
+  onAdd: (t: string, d: string, date: string) => void;
+  onToggle: (id: string, status: string) => void;
+  onEditDate: (id: string, date: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [targetDate, setTargetDate] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState("");
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const submit = () => {
+    if (!title.trim() || !targetDate) return;
+    onAdd(title.trim(), description.trim(), targetDate);
+    setTitle(""); setDescription(""); setTargetDate("");
+  };
+
+  const open = goals.filter((g) => g.status === "OPEN");
+  const done = goals.filter((g) => g.status === "DONE");
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-2">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="عنوان الهدف (مثلاً: يتقن الـ Armbar من الجارد)" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="تفاصيل (اختياري)" rows={2} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm resize-none" />
+        <div className="flex gap-2">
+          <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+          <button onClick={submit} className="bg-mtrred rounded-lg px-4 text-sm font-semibold shrink-0">إضافة هدف</button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {open.map((g: any) => {
+          const overdue = g.target_date && g.target_date < today;
+          return (
+            <div key={g.id} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <input type="checkbox" checked={false} onChange={() => onToggle(g.id, "DONE")} className="mt-1 accent-mtrred w-4 h-4 cursor-pointer" />
+                <div className="flex-1">
+                  <div className="text-sm font-semibold flex items-center gap-2 flex-wrap">
+                    {g.title}
+                    {g.source === "AI" && <span className="text-[10px] text-mtrgold bg-mtrgold/10 border border-mtrgold/30 rounded-full px-2 py-0.5">AI</span>}
+                  </div>
+                  {g.description && <div className="text-xs text-neutral-400 mt-1">{g.description}</div>}
+                  {editingId === g.id ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-2 py-1 text-xs" />
+                      <button onClick={() => { onEditDate(g.id, editDate); setEditingId(null); }} className="text-xs text-green-400">حفظ</button>
+                      <button onClick={() => setEditingId(null)} className="text-xs text-neutral-500">إلغاء</button>
+                    </div>
+                  ) : (
+                    <div className={`text-[11px] mt-2 ${overdue ? "text-red-400" : "text-neutral-500"}`}>
+                      {overdue ? "متأخر عن: " : "المستهدف: "}{g.target_date}
+                      <button onClick={() => { setEditingId(g.id); setEditDate(g.target_date); }} className="text-neutral-500 hover:text-neutral-300 mr-2">تعديل التاريخ</button>
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => onDelete(g.id)} className="text-neutral-600 hover:text-red-400 text-xs shrink-0">حذف</button>
+              </div>
+            </div>
+          );
+        })}
+        {open.length === 0 && <div className="text-neutral-500 text-xs text-center py-6">مفيش أهداف مفتوحة حاليًا.</div>}
+      </div>
+
+      {done.length > 0 && (
+        <div className="space-y-2 pt-2 border-t border-neutral-900">
+          <div className="text-[11px] text-neutral-500 mt-3">مُنجزة</div>
+          {done.map((g: any) => (
+            <div key={g.id} className="bg-neutral-950 border border-neutral-900 rounded-xl p-3 flex items-center justify-between opacity-60">
+              <div className="text-sm line-through">{g.title}</div>
+              <button onClick={() => onDelete(g.id)} className="text-neutral-600 hover:text-red-400 text-xs">حذف</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NotesTab({ notes, onAdd }: { notes: any[]; onAdd: (content: string) => void }) {
   const [content, setContent] = useState("");
 
@@ -931,8 +1061,8 @@ function AttachmentsTab({ attachments, onUpload }: { attachments: any[]; onUploa
 // data (roadmap + latest domain scores) and writes a plain-language
 // summary + focus plan. Swap this for a real Claude-powered chat later
 // by calling a server route that has ANTHROPIC_API_KEY set.
-function AssistantTab({ player, audience = "coach" }: { player: any; audience?: "coach" | "player" }) {
-  const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
+function AssistantTab({ player, audience = "coach", onDataChanged }: { player: any; audience?: "coach" | "player"; onDataChanged?: () => void }) {
+  const [messages, setMessages] = useState<{ role: string; content: string; actionsTaken?: string[] }[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -954,7 +1084,8 @@ function AssistantTab({ player, audience = "coach" }: { player: any; audience?: 
       });
       const data = await res.json();
       if (data.error) { setError(data.error); setSending(false); return; }
-      setMessages([...nextMessages, { role: "assistant", content: data.reply }]);
+      setMessages([...nextMessages, { role: "assistant", content: data.reply, actionsTaken: data.actionsTaken }]);
+      if (data.actionsTaken?.length > 0 && onDataChanged) onDataChanged();
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -964,17 +1095,35 @@ function AssistantTab({ player, audience = "coach" }: { player: any; audience?: 
 
   return (
     <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 flex flex-col h-[500px] max-w-lg">
-      <div className="text-sm font-semibold text-neutral-300 mb-3">اسأل المساعد عن {player.name}</div>
+      <div className="text-sm font-semibold text-neutral-300 mb-1">اسأل المساعد عن {player.name}</div>
+      {audience === "coach" && (
+        <div className="text-[11px] text-neutral-500 mb-3">
+          تقدر تحكي له اللي حصل في الحصة وهو يسجّل التقييمات والملاحظات بنفسه — وأي حاجة يسجّلها تقدر تراجعها أو تعدّلها يدويًا من التابات التانية.
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto space-y-3 mb-3">
         {messages.length === 0 && (
           <div className="text-neutral-500 text-xs text-center py-8 leading-relaxed">
-            اسأل أي حاجة — مثلاً: "اقترحلي تمارين للأسبوع الجاي" أو "عمل خطة غذائية قبل بطولة"
+            {audience === "coach"
+              ? 'مثلاً: "أدم النهاردة كان ضعيف في دفاع التيك داون، حط له 4 من 10 وضيفله هدف يتحسن بحلول آخر الشهر"'
+              : 'اسأل أي حاجة عن تطورك — مثلاً: "إزاي أحسّن دفاع التيك داون بتاعي؟"'}
           </div>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={`text-sm rounded-lg px-3 py-2 max-w-[85%] ${m.role === "user" ? "bg-mtrred/20 mr-0 ml-auto text-right" : "bg-neutral-900 ml-0"}`}>
-            {m.content}
+          <div key={i} className={m.role === "user" ? "text-left" : ""}>
+            <div className={`text-sm rounded-lg px-3 py-2 max-w-[85%] inline-block ${m.role === "user" ? "bg-mtrred/20 mr-0 ml-auto text-right float-right clear-both" : "bg-neutral-900 ml-0 float-left clear-both"}`}>
+              {m.content}
+            </div>
+            {m.actionsTaken && m.actionsTaken.length > 0 && (
+              <div className="clear-both mt-1.5 space-y-1">
+                {m.actionsTaken.map((a, j) => (
+                  <div key={j} className="text-[11px] text-green-300 bg-green-500/10 border border-green-500/20 rounded-md px-2.5 py-1 inline-block ml-1">
+                    ✓ {a}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         {sending && <div className="text-neutral-500 text-xs">بيفكر...</div>}
