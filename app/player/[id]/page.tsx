@@ -6,6 +6,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { supabase } from "@/lib/supabase";
+import { subscribeToPush } from "@/lib/push";
 
 const DOMAINS: Record<string, { label: string; color: string }> = {
   TECHNICAL: { label: "فني", color: "#C8102E" },
@@ -37,6 +38,8 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const [checkinMsg, setCheckinMsg] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [notifyMsg, setNotifyMsg] = useState("");
+  const [notifyLoading, setNotifyLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -89,6 +92,13 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       setCheckinMsg("✓ اتسجل حضورك النهارده");
     }
     setCheckingIn(false);
+  };
+
+  const enableNotifications = async () => {
+    setNotifyLoading(true);
+    const res = await subscribeToPush(playerId);
+    setNotifyMsg(res.ok ? "✓ الإشعارات اتفعّلت" : res.error || "حصل خطأ");
+    setNotifyLoading(false);
   };
 
   const submitFeedback = async () => {
@@ -319,6 +329,19 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
             </div>
           </div>
         )}
+
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+          <div className="text-sm font-semibold text-neutral-300 mb-2">إشعارات</div>
+          <div className="text-[11px] text-neutral-500 mb-3">فعّلها عشان توصلك تذكيرات بالنظام الغذائي وتنبيه لو اشتراكك قرّب يخلص — حتى لو الموقع مقفول.</div>
+          <button
+            onClick={enableNotifications}
+            disabled={notifyLoading}
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition disabled:opacity-50"
+          >
+            {notifyLoading ? "..." : "🔔 فعّل الإشعارات"}
+          </button>
+          {notifyMsg && <div className="text-xs text-neutral-400 mt-2 text-center">{notifyMsg}</div>}
+        </div>
 
         <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
           <div className="text-sm font-semibold text-neutral-300 mb-3">حضورك النهارده</div>
