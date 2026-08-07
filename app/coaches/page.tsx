@@ -9,6 +9,7 @@ const ROLE_LABELS: Record<string, string> = {
   ADMIN: "أدمن",
   HEAD_COACH: "كوتش رئيسي",
   COACH: "كوتش",
+  PERFORMANCE_COACH: "كوتش أداء بدني",
 };
 
 export default function CoachesPage() {

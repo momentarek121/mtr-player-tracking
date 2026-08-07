@@ -142,6 +142,38 @@ ${audience === "coach" && notes && notes.length > 0 ? `\nملاحظات المد
 
 المهارات المتاحة في النظام (استخدم الاسم بالظبط لما تسجّل تقييم): ${skillNamesList}
 `.trim();
+  } else if (audience === "owner") {
+    const [{ data: players }, { data: openRoadmap }, { data: subs }] = await Promise.all([
+      supabase.from("players").select("id, name, sport, current_belt, active").eq("approval_status", "APPROVED"),
+      supabase.from("player_roadmap_items").select("player_id, priority").eq("status", "OPEN"),
+      supabase.from("player_subscriptions").select("player_id, end_date, status").eq("status", "ACTIVE"),
+    ]);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const roadmapByPlayer: Record<string, number> = {};
+    (openRoadmap || []).forEach((r: any) => { roadmapByPlayer[r.player_id] = (roadmapByPlayer[r.player_id] || 0) + 1; });
+    const expiringSoon = (subs || []).filter((s: any) => {
+      const days = (new Date(s.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      return days >= 0 && days <= 7;
+    });
+
+    contextBlock = `
+نظرة عامة على الفريق كله (مش لاعب واحد):
+- إجمالي اللاعبين: ${(players || []).length}
+- BJJ: ${(players || []).filter((p: any) => p.sport === "BJJ").length} · MMA: ${(players || []).filter((p: any) => p.sport === "MMA").length} · الاتنين: ${(players || []).filter((p: any) => p.sport === "BOTH").length}
+
+لاعبين عندهم نقاط تطوير مفتوحة كتير (محتاجين متابعة):
+${Object.entries(roadmapByPlayer).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([pid, count]) => {
+  const p = (players || []).find((x: any) => x.id === pid);
+  return `- ${p?.name || pid}: ${count} نقطة`;
+}).join("\n") || "مفيش حد محتاج متابعة عاجلة"}
+
+اشتراكات هتنتهي خلال أسبوع:
+${expiringSoon.map((s: any) => {
+  const p = (players || []).find((x: any) => x.id === s.player_id);
+  return `- ${p?.name || s.player_id}: ${s.end_date}`;
+}).join("\n") || "مفيش اشتراكات هتنتهي قريب"}
+`.trim();
   }
 
   const toolsInstruction = canWrite
@@ -149,7 +181,7 @@ ${audience === "coach" && notes && notes.length > 0 ? `\nملاحظات المد
     : "";
 
   const systemPrompt = `أنت مساعد ذكي متخصص في رياضتي الجوجيتسو (BJJ) والـ MMA، بتساعد ${
-    audience === "coach" ? "كوتش" : "لاعب"
+    audience === "owner" ? "صاحب النظام" : audience === "coach" ? "كوتش" : "لاعب"
   } في نظام تتبع تدريب اسمه MTR Team. ردودك دايمًا بالعربية المصرية العامية، مختصرة وعملية ومباشرة، مبنية على البيانات الفعلية اللي هتوصلك عن اللاعب. اقترح تمارين وخطط غذائية وتوصيات تقنية حقيقية ومحددة، مش كلام عام. لو البيانات ناقصة، قول كده صراحة بدل ما تختلق معلومات.${toolsInstruction}
 
 ${contextBlock}`;

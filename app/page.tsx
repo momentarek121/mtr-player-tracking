@@ -479,6 +479,22 @@ export default function Page() {
           ✅ أخذ الحضور
         </Link>
 
+        <Link
+          href="/performance"
+          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+        >
+          💪 الأداء البدني
+        </Link>
+
+        {coach?.role === "ADMIN" && (
+          <Link
+            href="/owner-chat"
+            className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+          >
+            🧠 شات صاحب النظام
+          </Link>
+        )}
+
         <div className="flex gap-2 mb-3">
           <Link
             href="/coaches"
