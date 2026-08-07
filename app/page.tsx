@@ -40,6 +40,7 @@ export default function Page() {
   const [goals, setGoals] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [playerSearch, setPlayerSearch] = useState("");
   const [pendingCount, setPendingCount] = useState(0);
   const [bulkMode, setBulkMode] = useState(false);
@@ -423,7 +424,7 @@ export default function Page() {
       </div>
 
       <aside
-        className={`${sidebarOpen ? "flex" : "hidden"} md:flex w-full md:w-72 border-b md:border-b-0 md:border-l border-neutral-800 p-4 flex-col shrink-0 max-h-[45vh] md:max-h-none`}
+        className={`${sidebarOpen ? "flex" : "hidden"} md:flex w-full md:w-72 border-b md:border-b-0 md:border-l border-neutral-800 p-4 flex-col shrink-0 max-h-[70vh] md:max-h-none overflow-y-auto`}
       >
         <div className="hidden md:flex items-center gap-3 mb-6 px-1">
           <div className="w-10 h-10 rounded-lg bg-mtrred flex items-center justify-center font-bold text-sm">
@@ -442,82 +443,91 @@ export default function Page() {
           + إضافة لاعب
         </button>
 
-        <Link
-          href="/team"
-          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
-        >
-          📊 لوحة الفريق
-        </Link>
-
-        <Link
-          href="/registrations"
-          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition relative"
-        >
-          📝 طلبات التسجيل
-          {pendingCount > 0 && (
-            <span className="bg-mtrred text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-              {pendingCount}
-            </span>
-          )}
-        </Link>
-
         <button
-          onClick={() => {
-            const url = `${window.location.origin}/login`;
-            navigator.clipboard.writeText(url);
-            alert("اتنسخ لينك تسجيل دخول اللاعبين:\n" + url);
-          }}
-          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+          onClick={() => setMoreMenuOpen((v) => !v)}
+          className="md:hidden mb-2 flex items-center justify-center gap-1 text-xs text-neutral-400 py-1.5"
         >
-          🔑 نسخ لينك تسجيل دخول اللاعبين
+          {moreMenuOpen ? "▲ إخفاء الأدوات" : "▼ المزيد من الأدوات"}
         </button>
 
-        <Link
-          href="/take-attendance"
-          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
-        >
-          ✅ أخذ الحضور
-        </Link>
-
-        <Link
-          href="/performance"
-          className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
-        >
-          💪 الأداء البدني
-        </Link>
-
-        {coach?.role === "ADMIN" && (
+        <div className={`${moreMenuOpen ? "flex" : "hidden"} md:flex flex-col shrink-0`}>
           <Link
-            href="/owner-chat"
+            href="/team"
             className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
           >
-            🧠 شات صاحب النظام
+            📊 لوحة الفريق
           </Link>
-        )}
 
-        <div className="flex gap-2 mb-3">
           <Link
-            href="/coaches"
-            className="flex-1 flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 rounded-lg py-2 text-xs hover:border-neutral-500 transition"
+            href="/registrations"
+            className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition relative"
           >
-            👥 المدربين
+            📝 طلبات التسجيل
+            {pendingCount > 0 && (
+              <span className="bg-mtrred text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                {pendingCount}
+              </span>
+            )}
           </Link>
+
           <button
-            onClick={async () => { await supabase.auth.signOut(); window.location.href = "/admin-login"; }}
-            className="flex-1 flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 rounded-lg py-2 text-xs hover:border-neutral-500 transition"
+            onClick={() => {
+              const url = `${window.location.origin}/login`;
+              navigator.clipboard.writeText(url);
+              alert("اتنسخ لينك تسجيل دخول اللاعبين:\n" + url);
+            }}
+            className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
           >
-            🚪 خروج
+            🔑 نسخ لينك تسجيل دخول اللاعبين
           </button>
+
+          <Link
+            href="/take-attendance"
+            className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+          >
+            ✅ أخذ الحضور
+          </Link>
+
+          <Link
+            href="/performance"
+            className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+          >
+            💪 الأداء البدني
+          </Link>
+
+          {coach?.role === "ADMIN" && (
+            <Link
+              href="/owner-chat"
+              className="mb-2 flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-700 rounded-lg py-2.5 text-sm hover:border-neutral-500 transition"
+            >
+              🧠 شات صاحب النظام
+            </Link>
+          )}
+
+          <div className="flex gap-2 mb-3">
+            <Link
+              href="/coaches"
+              className="flex-1 flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 rounded-lg py-2 text-xs hover:border-neutral-500 transition"
+            >
+              👥 المدربين
+            </Link>
+            <button
+              onClick={async () => { await supabase.auth.signOut(); window.location.href = "/admin-login"; }}
+              className="flex-1 flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 rounded-lg py-2 text-xs hover:border-neutral-500 transition"
+            >
+              🚪 خروج
+            </button>
+          </div>
         </div>
 
         <input
           value={playerSearch}
           onChange={(e) => setPlayerSearch(e.target.value)}
           placeholder="دور بالاسم أو الكود..."
-          className="mb-2 w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm"
+          className="mt-1 mb-2 w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm shrink-0"
         />
 
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2 shrink-0">
           <button
             onClick={() => { setBulkMode((v) => !v); setSelectedForDelete(new Set()); }}
             className="text-xs text-neutral-400 hover:text-neutral-200 transition"
@@ -535,7 +545,7 @@ export default function Page() {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-1">
+        <div className="flex-1 overflow-y-auto space-y-1 min-h-[120px]">
           {players.length === 0 && (
             <div className="text-neutral-500 text-xs text-center py-6 leading-relaxed">
               مفيش لاعبين لسه — ابدأ بإضافة أول لاعب.
@@ -569,9 +579,9 @@ export default function Page() {
                   className="accent-mtrred w-4 h-4 shrink-0"
                 />
               )}
-              <div className="flex-1">
-                <div className="text-sm font-medium">{p.name}</div>
-                <div className="text-[11px] text-neutral-500">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{p.name}</div>
+                <div className="text-[11px] text-neutral-500 truncate">
                   {p.player_code && <span className="text-neutral-600">{p.player_code} · </span>}
                   {p.sport} · حزام {BELT_LABELS[p.current_belt]}
                 </div>
