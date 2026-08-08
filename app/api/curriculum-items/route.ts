@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase-admin";
 
 // GET /api/curriculum-items?belt=WHITE — all requirements for a belt
 export async function GET(req: NextRequest) {

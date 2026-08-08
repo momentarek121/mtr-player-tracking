@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase-admin";
 
 // GET /api/team-dashboard — cross-player rollup for the coach:
 // team size, average score per domain, and who needs attention.

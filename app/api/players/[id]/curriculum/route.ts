@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase-admin";
 
 // GET /api/players/:id/curriculum — belt requirements for this player's
 // CURRENT belt, joined with their completion status.

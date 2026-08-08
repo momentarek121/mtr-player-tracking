@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase-admin";
 
 // GET /api/skill-categories — used to populate the assessment form
 export async function GET() {

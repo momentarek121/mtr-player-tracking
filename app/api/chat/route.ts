@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase-admin";
 import { generateRoadmapForPlayer } from "@/lib/roadmap-engine";
 
 const MODEL = "llama-3.3-70b-versatile";

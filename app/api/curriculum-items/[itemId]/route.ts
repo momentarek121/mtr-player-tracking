@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase-admin";
 
 // PATCH /api/curriculum-items/:itemId — edit title/description
 export async function PATCH(req: NextRequest, { params }: { params: { itemId: string } }) {

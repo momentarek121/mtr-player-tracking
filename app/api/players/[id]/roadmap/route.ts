@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase-admin";
 import { generateRoadmapForPlayer } from "@/lib/roadmap-engine";
 
 // GET /api/players/:id/roadmap — current development priorities
