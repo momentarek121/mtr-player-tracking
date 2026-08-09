@@ -48,9 +48,17 @@ export default function TeamDashboard() {
             <div className="text-[11px] text-neutral-500">نظرة شاملة على كل اللاعبين</div>
           </div>
         </div>
-        <Link href="/" className="text-xs text-neutral-400 border border-neutral-700 rounded-lg px-3 py-2 hover:border-neutral-500 transition">
-          ← رجوع للداشبورد
-        </Link>
+        <div className="flex gap-2">
+          <a
+            href="/api/export"
+            className="text-xs text-neutral-400 border border-neutral-700 rounded-lg px-3 py-2 hover:border-neutral-500 transition"
+          >
+            ⬇️ تصدير Excel
+          </a>
+          <Link href="/" className="text-xs text-neutral-400 border border-neutral-700 rounded-lg px-3 py-2 hover:border-neutral-500 transition">
+            ← رجوع للداشبورد
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

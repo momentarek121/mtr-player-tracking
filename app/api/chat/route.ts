@@ -48,6 +48,54 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "add_meal_plan_item",
+      description: "أضف وجبة لخطة اللاعب الغذائية — استخدمها لو الكوتش طلب منك تعمل نظام غذائي أو تضيف وجبة معينة وتحطها للاعب.",
+      parameters: {
+        type: "object",
+        properties: {
+          mealTime: { type: "string", description: "وقت الوجبة، مثلاً: الفطار، قبل التمرين، بعد التمرين، الغدا، العشا، سناك" },
+          title: { type: "string", description: "عنوان الوجبة" },
+          description: { type: "string", description: "تفاصيل المكونات والكميات" },
+        },
+        required: ["mealTime", "title"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "assign_exercise",
+      description: "كلّف اللاعب بتمرين محدد — استخدمها لو الكوتش طلب منك تحط له تمارين أو واجب معين.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          dueDate: { type: "string", description: "تاريخ الاستحقاق YYYY-MM-DD (اختياري)" },
+        },
+        required: ["title"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_schedule_item",
+      description: "أضف موعد تدريب لجدول اللاعب الأسبوعي.",
+      parameters: {
+        type: "object",
+        properties: {
+          dayOfWeek: { type: "string", description: "اليوم بالعربي: السبت، الأحد، الاثنين، الثلاثاء، الأربعاء، الخميس، الجمعة" },
+          timeLabel: { type: "string", description: "الساعة، مثلاً: 6 م (اختياري)" },
+          activity: { type: "string", description: "النشاط، مثلاً: حصة سبارينج" },
+        },
+        required: ["dayOfWeek", "activity"],
+      },
+    },
+  },
 ];
 
 async function execTool(playerId: string, name: string, args: any) {
@@ -84,6 +132,36 @@ async function execTool(playerId: string, name: string, args: any) {
       source: "AI",
     });
     return { ok: true, message: `اتضاف هدف: "${args.title}" بتاريخ ${args.targetDate}` };
+  }
+
+  if (name === "add_meal_plan_item") {
+    await supabase.from("player_meals").insert({
+      player_id: playerId,
+      meal_time: args.mealTime,
+      title: args.title,
+      description: args.description || null,
+    });
+    return { ok: true, message: `اتضافت وجبة "${args.title}" (${args.mealTime})` };
+  }
+
+  if (name === "assign_exercise") {
+    await supabase.from("player_exercises").insert({
+      player_id: playerId,
+      title: args.title,
+      description: args.description || null,
+      due_date: args.dueDate || null,
+    });
+    return { ok: true, message: `اتكلّف اللاعب بتمرين: "${args.title}"` };
+  }
+
+  if (name === "add_schedule_item") {
+    await supabase.from("player_schedule").insert({
+      player_id: playerId,
+      day_of_week: args.dayOfWeek,
+      time_label: args.timeLabel || null,
+      activity: args.activity,
+    });
+    return { ok: true, message: `اتضاف للجدول: "${args.activity}" يوم ${args.dayOfWeek}` };
   }
 
   return { ok: false, message: "أداة غير معروفة." };
@@ -177,7 +255,7 @@ ${expiringSoon.map((s: any) => {
   }
 
   const toolsInstruction = canWrite
-    ? `\n\nعندك أدوات (tools) تقدر تستخدمها لما الكوتش يوصفلك أداء اللاعب أو يطلب منك تسجّل حاجة: تقدر تسجّل تقييم مهارة برقم، تضيف ملاحظة، أو تضيف هدف تطوير بتاريخ. استخدم الأدوات دي كل ما يكون الكلام واضح إنه بيوصف حاجة حصلت أو هدف محدد — الكوتش هيقدر يراجع ويعدّل أي حاجة تسجّلها يدويًا بعد كده. متسجّلش حاجة لو الكلام عام أو مجرد سؤال.`
+    ? `\n\nعندك أدوات (tools) تقدر تستخدمها لما الكوتش يطلب منك تسجّل حاجة فعليًا في النظام، مش بس تتكلم عنها: تسجيل تقييم مهارة برقم، إضافة ملاحظة، إضافة هدف تطوير بتاريخ، إضافة وجبة لخطة غذائية، تكليف اللاعب بتمرين، أو إضافة موعد لجدوله الأسبوعي. لو الكوتش قال حاجة زي "ابعتله كذا" أو "حط له خطة غذائية كذا" أو "كلّفه بالتمرين ده"، استخدم الأداة المناسبة على طول من غير ما تستأذن — الكوتش هيقدر يراجع ويعدّل أي حاجة تسجّلها يدويًا بعد كده من التابات التانية. متسجّلش حاجة لو الكلام عام أو مجرد سؤال.`
     : "";
 
   const systemPrompt = `أنت مساعد ذكي متخصص في رياضتي الجوجيتسو (BJJ) والـ MMA، بتساعد ${
