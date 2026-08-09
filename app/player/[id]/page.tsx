@@ -38,6 +38,9 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const [checkinMsg, setCheckinMsg] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackImageFile, setFeedbackImageFile] = useState<File | null>(null);
+  const [feedbackUploading, setFeedbackUploading] = useState(false);
+  const [feedbackThread, setFeedbackThread] = useState<any[]>([]);
   const [notifyMsg, setNotifyMsg] = useState("");
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -49,7 +52,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       if (!p) { setNotFound(true); setLoading(false); return; }
       setPlayer(p);
 
-      const [{ data: a }, { data: r }, { data: f }, { data: sch }, { data: mls }, { data: exs }, { data: att }] = await Promise.all([
+      const [{ data: a }, { data: r }, { data: f }, { data: sch }, { data: mls }, { data: exs }, { data: att }, { data: fb }] = await Promise.all([
         supabase.from("skill_assessments").select("*, skill_categories(name,domain)").eq("player_id", playerId).order("date"),
         supabase.from("player_roadmap_items").select("*").eq("player_id", playerId).eq("status", "OPEN").order("priority"),
         supabase.from("player_attachments").select("*").eq("player_id", playerId).order("uploaded_at", { ascending: false }),
@@ -57,6 +60,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
         supabase.from("player_meals").select("*").eq("player_id", playerId).order("sort_order"),
         supabase.from("player_exercises").select("*").eq("player_id", playerId).order("assigned_at", { ascending: false }),
         supabase.from("player_attendance").select("*").eq("player_id", playerId).order("date", { ascending: false }).limit(10),
+        supabase.from("player_feedback").select("*").eq("player_id", playerId).order("created_at", { ascending: false }),
       ]);
       setAssessments(a || []);
       setRoadmap(r || []);
@@ -65,6 +69,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       setMeals(mls || []);
       setExercises(exs || []);
       setAttendance(att || []);
+      setFeedbackThread(fb || []);
       setLoading(false);
     })();
   }, [playerId]);
@@ -102,9 +107,27 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   };
 
   const submitFeedback = async () => {
-    if (!feedbackMsg.trim()) return;
-    await supabase.from("player_feedback").insert({ player_id: playerId, message: feedbackMsg.trim() });
+    if (!feedbackMsg.trim() && !feedbackImageFile) return;
+    setFeedbackUploading(true);
+    let imageUrl: string | null = null;
+
+    if (feedbackImageFile) {
+      const path = `${playerId}/${Date.now()}-${feedbackImageFile.name}`;
+      const { error: upErr } = await supabase.storage.from("player-attachments").upload(path, feedbackImageFile);
+      if (upErr) { alert("فشل رفع الصورة: " + upErr.message); setFeedbackUploading(false); return; }
+      const { data: pub } = supabase.storage.from("player-attachments").getPublicUrl(path);
+      imageUrl = pub.publicUrl;
+    }
+
+    const { data } = await supabase
+      .from("player_feedback")
+      .insert({ player_id: playerId, message: feedbackMsg.trim(), image_url: imageUrl })
+      .select().single();
+
+    if (data) setFeedbackThread((prev) => [data, ...prev]);
     setFeedbackMsg("");
+    setFeedbackImageFile(null);
+    setFeedbackUploading(false);
     setFeedbackSent(true);
     setTimeout(() => setFeedbackSent(false), 3000);
   };
@@ -369,8 +392,8 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
         <PlayerChat player={player} />
 
         <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
-          <div className="text-sm font-semibold text-neutral-300 mb-1">ابعت ملاحظة أو طلب للمدرب</div>
-          <div className="text-[11px] text-neutral-500 mb-3">مثلاً: طلب تعديل في الجدول، ملاحظة عن إصابة، أو أي حاجة عايز توصلها</div>
+          <div className="text-sm font-semibold text-neutral-300 mb-1">راسل المدرب</div>
+          <div className="text-[11px] text-neutral-500 mb-3">مثلاً: طلب تعديل في الجدول، ملاحظة عن إصابة، صورة إصابة أو تكنيك، أو أي حاجة عايز توصلها</div>
           <textarea
             value={feedbackMsg}
             onChange={(e) => setFeedbackMsg(e.target.value)}
@@ -378,9 +401,49 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
             rows={3}
             className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-sm mb-3 resize-none"
           />
-          <button onClick={submitFeedback} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold">
-            {feedbackSent ? "✓ اتبعتت" : "إرسال للمدرب"}
+
+          <label className="flex items-center gap-2 border border-dashed border-neutral-700 rounded-lg px-3 py-2.5 text-xs text-neutral-400 cursor-pointer mb-3 hover:border-neutral-500 transition">
+            📷 {feedbackImageFile ? feedbackImageFile.name : "إرفاق صورة (اختياري)"}
+            <input
+              type="file" accept="image/*" className="hidden"
+              onChange={(e) => setFeedbackImageFile(e.target.files?.[0] || null)}
+            />
+          </label>
+
+          <button
+            onClick={submitFeedback}
+            disabled={feedbackUploading}
+            className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            {feedbackUploading ? "جاري الإرسال..." : feedbackSent ? "✓ اتبعتت" : "إرسال للمدرب"}
           </button>
+
+          {feedbackThread.length > 0 && (
+            <div className="mt-5 space-y-3 border-t border-neutral-900 pt-4">
+              {feedbackThread.map((f: any) => (
+                <div key={f.id} className="space-y-2">
+                  <div className="bg-neutral-900 rounded-lg p-3">
+                    {f.message && <div className="text-sm text-neutral-200">{f.message}</div>}
+                    {f.image_url && (
+                      <img src={f.image_url} alt="" className="mt-2 rounded-lg max-h-48 object-cover" />
+                    )}
+                    <div className="text-[10px] text-neutral-600 mt-1.5">
+                      {new Date(f.created_at).toLocaleDateString("ar-EG")}
+                    </div>
+                  </div>
+                  {(f.coach_reply || f.coach_reply_image_url) && (
+                    <div className="bg-mtrred/10 border border-mtrred/20 rounded-lg p-3 mr-4">
+                      <div className="text-[10px] text-mtrgold mb-1">رد المدرب</div>
+                      {f.coach_reply && <div className="text-sm text-neutral-200">{f.coach_reply}</div>}
+                      {f.coach_reply_image_url && (
+                        <img src={f.coach_reply_image_url} alt="" className="mt-2 rounded-lg max-h-48 object-cover" />
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

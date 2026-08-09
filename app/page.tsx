@@ -152,11 +152,19 @@ export default function Page() {
     await loadPlayerData(selectedId);
   };
 
-  const replyFeedback = async (itemId: string, status: string, coachReply?: string) => {
+  const replyFeedback = async (itemId: string, status: string, coachReply?: string, imageFile?: File | null) => {
     if (!selectedId) return;
+    let coachReplyImageUrl: string | undefined;
+    if (imageFile) {
+      const path = `${selectedId}/reply-${Date.now()}-${imageFile.name}`;
+      const { error: upErr } = await supabase.storage.from("player-attachments").upload(path, imageFile);
+      if (upErr) { alert("فشل رفع الصورة: " + upErr.message); return; }
+      const { data: pub } = supabase.storage.from("player-attachments").getPublicUrl(path);
+      coachReplyImageUrl = pub.publicUrl;
+    }
     await fetch(`/api/players/${selectedId}/feedback`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemId, status, coachReply }),
+      body: JSON.stringify({ itemId, status, coachReply, coachReplyImageUrl }),
     });
     await loadPlayerData(selectedId);
   };
@@ -1305,7 +1313,18 @@ function ExercisesTab({ exercises, onAdd, onToggle, onDelete }: { exercises: any
   );
 }
 
-function RequestsTab({ feedback, onReply }: { feedback: any[]; onReply: (id: string, status: string, reply?: string) => void }) {
+function RequestsTab({ feedback, onReply }: { feedback: any[]; onReply: (id: string, status: string, reply?: string, imageFile?: File | null) => void }) {
+  const [replyingId, setReplyingId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [replyImage, setReplyImage] = useState<File | null>(null);
+
+  const submitReply = (id: string) => {
+    onReply(id, "REVIEWED", replyText.trim() || undefined, replyImage);
+    setReplyingId(null);
+    setReplyText("");
+    setReplyImage(null);
+  };
+
   return (
     <div className="space-y-2.5">
       {feedback.length === 0 && <div className="text-neutral-500 text-xs text-center py-8">اللاعب لسه ما بعتش أي ملاحظات أو طلبات.</div>}
@@ -1317,14 +1336,52 @@ function RequestsTab({ feedback, onReply }: { feedback: any[]; onReply: (id: str
             </span>
             <span className="text-[11px] text-neutral-600">{new Date(f.created_at).toLocaleDateString("ar-EG")}</span>
           </div>
-          <div className="text-sm text-neutral-200 mb-3">{f.message}</div>
+          {f.message && <div className="text-sm text-neutral-200 mb-2">{f.message}</div>}
+          {f.image_url && <img src={f.image_url} alt="" className="rounded-lg max-h-56 object-cover mb-3" />}
+
+          {(f.coach_reply || f.coach_reply_image_url) && (
+            <div className="bg-mtrred/10 border border-mtrred/20 rounded-lg p-3 mb-2">
+              <div className="text-[10px] text-mtrgold mb-1">ردك</div>
+              {f.coach_reply && <div className="text-sm text-neutral-200">{f.coach_reply}</div>}
+              {f.coach_reply_image_url && <img src={f.coach_reply_image_url} alt="" className="mt-2 rounded-lg max-h-48 object-cover" />}
+            </div>
+          )}
+
           {f.status === "PENDING" && (
-            <button
-              onClick={() => onReply(f.id, "REVIEWED")}
-              className="text-xs bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 hover:border-neutral-500 transition"
-            >
-              تعليم كمُراجَع
-            </button>
+            replyingId === f.id ? (
+              <div className="space-y-2">
+                <textarea
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder="اكتب ردك..."
+                  rows={2}
+                  className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm resize-none"
+                />
+                <label className="flex items-center gap-2 border border-dashed border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-400 cursor-pointer">
+                  📷 {replyImage ? replyImage.name : "إرفاق صورة (اختياري)"}
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => setReplyImage(e.target.files?.[0] || null)} />
+                </label>
+                <div className="flex gap-2">
+                  <button onClick={() => submitReply(f.id)} className="text-xs bg-mtrred rounded-lg px-3 py-1.5 font-semibold">إرسال الرد</button>
+                  <button onClick={() => setReplyingId(null)} className="text-xs text-neutral-500">إلغاء</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setReplyingId(f.id)}
+                  className="text-xs bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 hover:border-neutral-500 transition"
+                >
+                  رد
+                </button>
+                <button
+                  onClick={() => onReply(f.id, "REVIEWED")}
+                  className="text-xs text-neutral-500 hover:text-neutral-300"
+                >
+                  تعليم كمُراجَع بدون رد
+                </button>
+              </div>
+            )
           )}
         </div>
       ))}
