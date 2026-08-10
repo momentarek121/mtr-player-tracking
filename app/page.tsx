@@ -38,6 +38,7 @@ export default function Page() {
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
+  const [playerChatLogs, setPlayerChatLogs] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -48,7 +49,7 @@ export default function Page() {
   const [deleting, setDeleting] = useState(false);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
-    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals"
+    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals" | "playerchat"
   >("overview");
   const [loading, setLoading] = useState(true);
 
@@ -72,7 +73,7 @@ export default function Page() {
   };
 
   const loadPlayerData = async (playerId: string) => {
-    const [a, r, n, f, s, c, sch, mls, exs, fb, subs, att, gls] = await Promise.all([
+    const [a, r, n, f, s, c, sch, mls, exs, fb, subs, att, gls, chatLogs] = await Promise.all([
       fetch(`/api/players/${playerId}/analytics`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/roadmap`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/notes`).then((r) => r.json()),
@@ -86,6 +87,7 @@ export default function Page() {
       fetch(`/api/players/${playerId}/subscriptions`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/attendance`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/goals`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/chat-logs`).then((r) => r.json()),
     ]);
     setAnalytics(a);
     setRoadmap(r.roadmap || []);
@@ -100,6 +102,7 @@ export default function Page() {
     setSubscriptions(subs.subscriptions || []);
     setAttendance(att.attendance || []);
     setGoals(gls.goals || []);
+    setPlayerChatLogs(chatLogs.logs || []);
   };
 
   const addScheduleItem = async (dayOfWeek: string, timeLabel: string, activity: string) => {
@@ -660,6 +663,7 @@ export default function Page() {
                 ["assess", "تسجيل تقييم"],
                 ["roadmap", "خطة التطوير"],
                 ["goals", "أهداف بتاريخ"],
+                ["playerchat", "شات اللاعب"],
                 ["curriculum", "متطلبات الحزام"],
                 ["schedule", "الجدول"],
                 ["nutrition", "التغذية"],
@@ -697,6 +701,7 @@ export default function Page() {
             {tab === "goals" && (
               <GoalsTab goals={goals} onAdd={addGoal} onToggle={toggleGoal} onEditDate={editGoalDate} onDelete={deleteGoal} />
             )}
+            {tab === "playerchat" && <PlayerChatLogTab logs={playerChatLogs} />}
             {tab === "curriculum" && (
               <CurriculumTab
                 curriculum={curriculum}
@@ -995,6 +1000,28 @@ function GoalsTab({
             <div key={g.id} className="bg-neutral-950 border border-neutral-900 rounded-xl p-3 flex items-center justify-between opacity-60">
               <div className="text-sm line-through">{g.title}</div>
               <button onClick={() => onDelete(g.id)} className="text-neutral-600 hover:text-red-400 text-xs">حذف</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlayerChatLogTab({ logs }: { logs: any[] }) {
+  return (
+    <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 max-w-lg">
+      <div className="text-sm font-semibold text-neutral-300 mb-1">أسئلة اللاعب للمساعد</div>
+      <div className="text-[11px] text-neutral-500 mb-4">عرض فقط — شوف اللاعب بيسأل عن إيه عشان تعرف تركّز مع تطويره على إيه.</div>
+
+      {logs.length === 0 ? (
+        <div className="text-neutral-500 text-xs text-center py-8">اللاعب لسه ما استخدمش المساعد.</div>
+      ) : (
+        <div className="space-y-3 max-h-[500px] overflow-y-auto">
+          {logs.map((l: any, i: number) => (
+            <div key={i} className={`text-sm rounded-lg px-3 py-2 max-w-[85%] ${l.role === "user" ? "bg-mtrred/20 mr-0 ml-auto text-right" : "bg-neutral-900 ml-0"}`}>
+              {l.content}
+              <div className="text-[10px] text-neutral-600 mt-1">{new Date(l.created_at).toLocaleString("ar-EG", { dateStyle: "short", timeStyle: "short" })}</div>
             </div>
           ))}
         </div>

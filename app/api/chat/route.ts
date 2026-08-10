@@ -291,6 +291,15 @@ ${contextBlock}`;
     const choice = data.choices?.[0]?.message;
     const actionsTaken: string[] = [];
 
+    const logIfPlayer = async (reply: string) => {
+      if (audience !== "player" || !playerId) return;
+      const lastUserMsg = messages[messages.length - 1];
+      const rows = [];
+      if (lastUserMsg?.role === "user") rows.push({ player_id: playerId, role: "user", content: lastUserMsg.content });
+      rows.push({ player_id: playerId, role: "assistant", content: reply });
+      await supabase.from("player_chat_logs").insert(rows);
+    };
+
     if (choice?.tool_calls?.length) {
       const toolResultMessages = [];
       for (const call of choice.tool_calls) {
@@ -322,10 +331,12 @@ ${contextBlock}`;
       });
       const followUpData = await followUp.json();
       const reply = followUpData.choices?.[0]?.message?.content || "تم.";
+      await logIfPlayer(reply);
       return NextResponse.json({ reply, actionsTaken });
     }
 
     const reply = choice?.content || "معرفتش أرد دلوقتي، جرب تاني.";
+    await logIfPlayer(reply);
     return NextResponse.json({ reply, actionsTaken });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
