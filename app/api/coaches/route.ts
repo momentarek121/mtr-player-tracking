@@ -9,8 +9,10 @@ export async function GET() {
 }
 
 // POST /api/coaches — create a coach WITH a real login account (email + password)
-// set by the admin, so the new coach can log in immediately with no
-// separate self-registration step.
+// set by the admin. If the email is already registered (e.g. the person
+// previously signed up as a player), we reuse that existing auth account,
+// update its password to the one the admin just set, and link it instead
+// of failing.
 export async function POST(req: NextRequest) {
   const { name, email, password, role } = await req.json();
   if (!name || !email || !password) {
@@ -20,27 +22,59 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "الباسورد لازم يكون 6 حروف/أرقام على الأقل" }, { status: 400 });
   }
 
-  // Create the Supabase Auth account directly (skips email confirmation
-  // since the admin is provisioning it themselves).
-  const { data: authUser, error: authErr } = await supabase.auth.admin.createUser({
+  let authUserId: string;
+
+  const { data: created, error: authErr } = await supabase.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
   });
 
   if (authErr) {
-    return NextResponse.json({ error: `فشل إنشاء الحساب: ${authErr.message}` }, { status: 500 });
+    const alreadyExists = /already.*registered|already.*exists|duplicate/i.test(authErr.message);
+    if (!alreadyExists) {
+      return NextResponse.json({ error: `فشل إنشاء الحساب: ${authErr.message}` }, { status: 500 });
+    }
+
+    // Find the existing auth account by email and reuse it — set the new
+    // password the admin chose so it matches what they'll hand out.
+    let foundId: string | null = null;
+    let page = 1;
+    while (!foundId) {
+      const { data: list, error: listErr } = await supabase.auth.admin.listUsers({ page, perPage: 200 });
+      if (listErr || !list?.users?.length) break;
+      const match = list.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+      if (match) foundId = match.id;
+      if (list.users.length < 200) break;
+      page++;
+    }
+
+    if (!foundId) {
+      return NextResponse.json({ error: `فشل إنشاء الحساب: ${authErr.message}` }, { status: 500 });
+    }
+
+    const { error: updateErr } = await supabase.auth.admin.updateUserById(foundId, { password });
+    if (updateErr) {
+      return NextResponse.json({ error: `الإيميل ده مسجّل بالفعل ومحصلش تحديث الباسورد: ${updateErr.message}` }, { status: 500 });
+    }
+
+    authUserId = foundId;
+  } else {
+    authUserId = created.user.id;
   }
 
+  // Upsert the coaches row — if this email already exists as a coach (e.g.
+  // re-adding), update it instead of erroring on the unique email constraint.
   const { data: coachRow, error: coachErr } = await supabase
     .from("coaches")
-    .insert({ name, email, role: role || "COACH", auth_user_id: authUser.user.id })
+    .upsert(
+      { name, email, role: role || "COACH", auth_user_id: authUserId },
+      { onConflict: "email" }
+    )
     .select()
     .single();
 
   if (coachErr) {
-    // Roll back the auth user if the coaches row failed (e.g. email already used as a coach)
-    await supabase.auth.admin.deleteUser(authUser.user.id);
     return NextResponse.json({ error: coachErr.message }, { status: 500 });
   }
 
