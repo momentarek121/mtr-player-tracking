@@ -18,7 +18,10 @@ export default function CoachesPage() {
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState("COACH");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const load = async () => {
     const { data } = await supabase.from("coaches").select("*").order("created_at");
@@ -31,9 +34,18 @@ export default function CoachesPage() {
   const canManage = coach?.role === "ADMIN" || coach?.role === "HEAD_COACH";
 
   const addCoach = async () => {
-    if (!newEmail.trim() || !newName.trim()) return;
-    await supabase.from("coaches").insert({ email: newEmail.trim(), name: newName.trim(), role: newRole });
-    setNewEmail(""); setNewName("");
+    if (!newEmail.trim() || !newName.trim() || !newPassword.trim()) return;
+    setSaving(true);
+    setError("");
+    const res = await fetch("/api/coaches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName.trim(), email: newEmail.trim(), password: newPassword.trim(), role: newRole }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (data.error) { setError(data.error); return; }
+    setNewEmail(""); setNewName(""); setNewPassword("");
     load();
   };
 
@@ -67,16 +79,23 @@ export default function CoachesPage() {
         <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 mb-5">
           <div className="text-sm font-semibold text-neutral-300 mb-3">إضافة مدرب جديد</div>
           <div className="text-[11px] text-neutral-500 mb-3">
-            ضيف الإيميل هنا الأول — المدرب الجديد لازم يعمل حساب (Sign up) بنفس الإيميل ده من صفحة دخول المدربين، وهيتفعّل تلقائي.
+            حط إيميل وباسورد بنفسك — الحساب بيتعمل فورًا ويقدر يدخل بيهم على طول من غير أي خطوة تانية.
           </div>
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="الاسم" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm mb-2" />
           <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="الإيميل" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm mb-2" />
-          <div className="flex gap-1.5 mb-3">
+          <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="text" placeholder="الباسورد (6 حروف على الأقل)" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm mb-2" />
+          <div className="text-[10px] text-neutral-500 mb-3">
+            اختار التخصص — لو "كوتش أداء بدني"، هتفتحله واجهة مخصصة للأداء البدني بدل الداشبورد الكامل تلقائيًا.
+          </div>
+          <div className="flex gap-1.5 flex-wrap mb-3">
             {Object.entries(ROLE_LABELS).map(([r, l]) => (
               <button key={r} onClick={() => setNewRole(r)} className={`px-3 py-1.5 rounded-md text-xs border ${newRole === r ? "bg-mtrred border-mtrred" : "border-neutral-700 text-neutral-400"}`}>{l}</button>
             ))}
           </div>
-          <button onClick={addCoach} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold">إضافة</button>
+          {error && <div className="text-red-400 text-xs mb-3">{error}</div>}
+          <button onClick={addCoach} disabled={saving} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50">
+            {saving ? "جاري الإنشاء..." : "إضافة"}
+          </button>
         </div>
       )}
 

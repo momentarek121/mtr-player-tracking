@@ -13,23 +13,40 @@ export default function PerformancePage() {
   const { loading: authLoading, coach, denied } = useCoachAuth();
   const [players, setPlayers] = useState<any[]>([]);
   const [assessments, setAssessments] = useState<any[]>([]);
+  const [physicalSkills, setPhysicalSkills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [openFormFor, setOpenFormFor] = useState<string | null>(null);
+  const [formSkillId, setFormSkillId] = useState("");
+  const [formScore, setFormScore] = useState(7);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!coach) return;
-    (async () => {
-      const [{ data: ps }, { data: a }] = await Promise.all([
-        supabase.from("players").select("*").eq("approval_status", "APPROVED").eq("active", true).order("name"),
-        supabase
-          .from("skill_assessments")
-          .select("player_id, score, date, skill_categories(name, domain)")
-          .order("date", { ascending: false }),
-      ]);
-      setPlayers(ps || []);
-      setAssessments((a || []).filter((x: any) => x.skill_categories?.domain === "PHYSICAL"));
-      setLoading(false);
-    })();
-  }, [coach]);
+  const load = async () => {
+    const [{ data: ps }, { data: a }, { data: sk }] = await Promise.all([
+      supabase.from("players").select("*").eq("approval_status", "APPROVED").eq("active", true).order("name"),
+      supabase
+        .from("skill_assessments")
+        .select("player_id, score, date, skill_categories(name, domain)")
+        .order("date", { ascending: false }),
+      supabase.from("skill_categories").select("*").eq("domain", "PHYSICAL"),
+    ]);
+    setPlayers(ps || []);
+    setAssessments((a || []).filter((x: any) => x.skill_categories?.domain === "PHYSICAL"));
+    setPhysicalSkills(sk || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { if (coach) load(); }, [coach]);
+
+  const submitAssessment = async (playerId: string) => {
+    if (!formSkillId) return;
+    setSaving(true);
+    await supabase.from("skill_assessments").insert({ player_id: playerId, skill_category_id: formSkillId, score: formScore });
+    setOpenFormFor(null);
+    setFormSkillId("");
+    setFormScore(7);
+    setSaving(false);
+    await load();
+  };
 
   const rows = useMemo(() => {
     return players.map((p) => {
@@ -63,6 +80,12 @@ export default function PerformancePage() {
         <Link href="/" className="text-xs text-neutral-400 border border-neutral-700 rounded-lg px-3 py-2 hover:border-neutral-500 transition">
           ← رجوع
         </Link>
+        <button
+          onClick={async () => { await supabase.auth.signOut(); window.location.href = "/admin-login"; }}
+          className="text-xs text-neutral-400 border border-neutral-700 rounded-lg px-3 py-2 hover:border-neutral-500 transition"
+        >
+          🚪 خروج
+        </button>
       </div>
 
       <div className="space-y-2">
@@ -82,13 +105,43 @@ export default function PerformancePage() {
               )}
             </div>
             {scores.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
+              <div className="flex flex-wrap gap-1.5 mt-2 mb-2">
                 {scores.map((s, i) => (
                   <span key={i} className="text-[11px] bg-neutral-900 border border-neutral-800 rounded-full px-2.5 py-1">
                     {s.name}: {s.score}/10
                   </span>
                 ))}
               </div>
+            )}
+
+            {openFormFor === player.id ? (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 mt-2 space-y-2">
+                <select
+                  value={formSkillId}
+                  onChange={(e) => setFormSkillId(e.target.value)}
+                  className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">اختار المهارة البدنية</option>
+                  {physicalSkills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <div>
+                  <label className="text-xs text-neutral-500">الدرجة: {formScore}/10</label>
+                  <input type="range" min={1} max={10} value={formScore} onChange={(e) => setFormScore(Number(e.target.value))} className="w-full accent-mtrred" />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => submitAssessment(player.id)} disabled={saving || !formSkillId} className="bg-mtrred rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40">
+                    {saving ? "..." : "حفظ"}
+                  </button>
+                  <button onClick={() => setOpenFormFor(null)} className="text-xs text-neutral-500">إلغاء</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setOpenFormFor(player.id)}
+                className="text-xs text-neutral-400 hover:text-neutral-200 transition"
+              >
+                + تسجيل تقييم بدني
+              </button>
             )}
           </div>
         ))}

@@ -453,19 +453,35 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
 }
 
 function PlayerChat({ player }: { player: any }) {
-  const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
+  const [messages, setMessages] = useState<{ role: string; content: string; imageUrl?: string }[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [attachedImage, setAttachedImage] = useState<File | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const send = async () => {
-    if (!input.trim() || sending) return;
-    const userMsg = { role: "user", content: input.trim() };
-    const nextMessages = [...messages, userMsg];
-    setMessages(nextMessages);
-    setInput("");
+    if ((!input.trim() && !attachedImage) || sending) return;
     setSending(true);
     setError("");
+
+    let imageUrl: string | undefined;
+    if (attachedImage) {
+      setUploadingImage(true);
+      const path = `${player.id}/chat-${Date.now()}-${attachedImage.name}`;
+      const { error: upErr } = await supabase.storage.from("player-attachments").upload(path, attachedImage);
+      setUploadingImage(false);
+      if (upErr) { setError("فشل رفع الصورة: " + upErr.message); setSending(false); return; }
+      const { data: pub } = supabase.storage.from("player-attachments").getPublicUrl(path);
+      imageUrl = pub.publicUrl;
+    }
+
+    const textContent = imageUrl ? `${input.trim()}${input.trim() ? "\n" : ""}[صورة مرفقة: ${imageUrl}]` : input.trim();
+    const userMsg = { role: "user", content: textContent };
+    const nextMessages = [...messages.map(({ role, content }) => ({ role, content })), userMsg];
+    setMessages([...messages, { role: "user", content: input.trim(), imageUrl }]);
+    setInput("");
+    setAttachedImage(null);
 
     try {
       const res = await fetch("/api/chat", {
@@ -475,7 +491,7 @@ function PlayerChat({ player }: { player: any }) {
       });
       const data = await res.json();
       if (data.error) { setError(data.error); setSending(false); return; }
-      setMessages([...nextMessages, { role: "assistant", content: data.reply }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -495,12 +511,23 @@ function PlayerChat({ player }: { player: any }) {
         {messages.map((m, i) => (
           <div key={i} className={`text-sm rounded-lg px-3 py-2 max-w-[85%] ${m.role === "user" ? "bg-mtrred/20 mr-0 ml-auto text-right" : "bg-neutral-900 ml-0"}`}>
             {m.content}
+            {m.imageUrl && <img src={m.imageUrl} alt="" className="mt-2 rounded-lg max-h-48 object-cover" />}
           </div>
         ))}
-        {sending && <div className="text-neutral-500 text-xs">بيفكر...</div>}
+        {sending && <div className="text-neutral-500 text-xs">{uploadingImage ? "بيرفع الصورة..." : "بيفكر..."}</div>}
         {error && <div className="text-red-400 text-xs">{error}</div>}
       </div>
+      {attachedImage && (
+        <div className="text-[11px] text-neutral-400 mb-2 flex items-center gap-2">
+          📎 {attachedImage.name}
+          <button onClick={() => setAttachedImage(null)} className="text-red-400">إلغاء</button>
+        </div>
+      )}
       <div className="flex gap-2">
+        <label className="flex items-center justify-center w-10 h-10 shrink-0 bg-black border border-neutral-700 rounded-lg cursor-pointer text-lg">
+          📎
+          <input type="file" accept="image/*" className="hidden" onChange={(e) => setAttachedImage(e.target.files?.[0] || null)} />
+        </label>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
