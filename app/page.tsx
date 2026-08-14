@@ -39,6 +39,10 @@ export default function Page() {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
   const [playerChatLogs, setPlayerChatLogs] = useState<any[]>([]);
+  const [weightLog, setWeightLog] = useState<any[]>([]);
+  const [rolls, setRolls] = useState<any[]>([]);
+  const [readiness, setReadiness] = useState<any[]>([]);
+  const [competitions, setCompetitions] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -49,7 +53,7 @@ export default function Page() {
   const [deleting, setDeleting] = useState(false);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
-    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals" | "playerchat"
+    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals" | "playerchat" | "weight" | "rolls" | "readiness" | "competitions"
   >("overview");
   const [loading, setLoading] = useState(true);
 
@@ -73,7 +77,7 @@ export default function Page() {
   };
 
   const loadPlayerData = async (playerId: string) => {
-    const [a, r, n, f, s, c, sch, mls, exs, fb, subs, att, gls, chatLogs] = await Promise.all([
+    const [a, r, n, f, s, c, sch, mls, exs, fb, subs, att, gls, chatLogs, wl, rls, rdn, comp] = await Promise.all([
       fetch(`/api/players/${playerId}/analytics`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/roadmap`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/notes`).then((r) => r.json()),
@@ -88,6 +92,10 @@ export default function Page() {
       fetch(`/api/players/${playerId}/attendance`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/goals`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/chat-logs`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/weight-log`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/rolls`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/readiness`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/competitions`).then((r) => r.json()),
     ]);
     setAnalytics(a);
     setRoadmap(r.roadmap || []);
@@ -103,6 +111,10 @@ export default function Page() {
     setAttendance(att.attendance || []);
     setGoals(gls.goals || []);
     setPlayerChatLogs(chatLogs.logs || []);
+    setWeightLog(wl.log || []);
+    setRolls(rls.rolls || []);
+    setReadiness(rdn.readiness || []);
+    setCompetitions(comp.competitions || []);
   };
 
   const addScheduleItem = async (dayOfWeek: string, timeLabel: string, activity: string) => {
@@ -237,6 +249,49 @@ export default function Page() {
   const deleteGoal = async (itemId: string) => {
     if (!selectedId) return;
     await fetch(`/api/players/${selectedId}/goals?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
+  const addWeightEntry = async (weightKg: number, date: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/weight-log`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ weightKg, date }),
+    });
+    await loadPlayerData(selectedId);
+    await loadPlayers();
+  };
+  const deleteWeightEntry = async (itemId: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/weight-log?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
+  const addRoll = async (partnerName: string, subsLanded: number, subsReceived: number, notes: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/rolls`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ partnerName, submissionsLanded: subsLanded, submissionsReceived: subsReceived, notes }),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const deleteRoll = async (itemId: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/rolls?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
+  const addCompetition = async (payload: any) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/competitions`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await loadPlayerData(selectedId);
+  };
+  const deleteCompetition = async (itemId: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/players/${selectedId}/competitions?itemId=${itemId}`, { method: "DELETE" });
     await loadPlayerData(selectedId);
   };
 
@@ -668,6 +723,10 @@ export default function Page() {
                 ["roadmap", "خطة التطوير"],
                 ["goals", "أهداف بتاريخ"],
                 ["playerchat", "شات اللاعب"],
+                ["weight", "الوزن"],
+                ["rolls", "سجل السبارينج"],
+                ["readiness", "الجاهزية"],
+                ["competitions", "البطولات"],
                 ["curriculum", "متطلبات الحزام"],
                 ["schedule", "الجدول"],
                 ["nutrition", "التغذية"],
@@ -706,6 +765,10 @@ export default function Page() {
               <GoalsTab goals={goals} onAdd={addGoal} onToggle={toggleGoal} onEditDate={editGoalDate} onDelete={deleteGoal} />
             )}
             {tab === "playerchat" && <PlayerChatLogTab logs={playerChatLogs} />}
+            {tab === "weight" && <WeightTab log={weightLog} onAdd={addWeightEntry} onDelete={deleteWeightEntry} />}
+            {tab === "rolls" && <RollsTab rolls={rolls} onAdd={addRoll} onDelete={deleteRoll} />}
+            {tab === "readiness" && <ReadinessTab readiness={readiness} />}
+            {tab === "competitions" && <CompetitionsTab competitions={competitions} onAdd={addCompetition} onDelete={deleteCompetition} selectedPlayer={selectedPlayer} />}
             {tab === "curriculum" && (
               <CurriculumTab
                 curriculum={curriculum}
@@ -1030,6 +1093,223 @@ function PlayerChatLogTab({ logs }: { logs: any[] }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function WeightTab({ log, onAdd, onDelete }: { log: any[]; onAdd: (w: number, d: string) => void; onDelete: (id: string) => void }) {
+  const [weight, setWeight] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+
+  const submit = () => {
+    if (!weight) return;
+    onAdd(Number(weight), date);
+    setWeight("");
+  };
+
+  const chartData = log.map((e: any) => ({ date: e.date.slice(5), weight: e.weight_kg }));
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+        <div className="text-sm font-semibold text-neutral-300 mb-3">منحنى الوزن</div>
+        {chartData.length < 2 ? (
+          <div className="text-neutral-500 text-xs text-center py-10">سجّل وزنين على الأقل عشان يظهر المنحنى.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData}>
+              <CartesianGrid stroke="#1E1E21" />
+              <XAxis dataKey="date" tick={{ fill: "#8B8B8F", fontSize: 11 }} />
+              <YAxis tick={{ fill: "#8B8B8F", fontSize: 11 }} domain={["auto", "auto"]} />
+              <Tooltip contentStyle={{ background: "#17171A", border: "1px solid #2A2A2E", fontSize: 12 }} />
+              <Line type="monotone" dataKey="weight" stroke="#C8102E" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex gap-2">
+        <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="الوزن كجم" className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <button onClick={submit} className="bg-mtrred rounded-lg px-4 text-sm font-semibold shrink-0">تسجيل</button>
+      </div>
+
+      <div className="space-y-1.5">
+        {[...log].reverse().map((e: any) => (
+          <div key={e.id} className="flex items-center justify-between bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5">
+            <div className="text-sm">{e.weight_kg} كجم <span className="text-neutral-500 text-xs">· {e.date}</span></div>
+            <button onClick={() => onDelete(e.id)} className="text-xs text-neutral-600 hover:text-red-400">حذف</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RollsTab({ rolls, onAdd, onDelete }: { rolls: any[]; onAdd: (p: string, sl: number, sr: number, n: string) => void; onDelete: (id: string) => void }) {
+  const [partner, setPartner] = useState("");
+  const [landed, setLanded] = useState("0");
+  const [received, setReceived] = useState("0");
+  const [notes, setNotes] = useState("");
+
+  const submit = () => {
+    onAdd(partner.trim(), Number(landed), Number(received), notes.trim());
+    setPartner(""); setLanded("0"); setReceived("0"); setNotes("");
+  };
+
+  const totalLanded = rolls.reduce((s, r) => s + r.submissions_landed, 0);
+  const totalReceived = rolls.reduce((s, r) => s + r.submissions_received, 0);
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 text-center">
+          <div className="text-xl font-bold text-green-400">{totalLanded}</div>
+          <div className="text-[11px] text-neutral-500">إنهاءات ضربها</div>
+        </div>
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 text-center">
+          <div className="text-xl font-bold text-red-400">{totalReceived}</div>
+          <div className="text-[11px] text-neutral-500">إنهاءات اتضربله</div>
+        </div>
+      </div>
+
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-2">
+        <input value={partner} onChange={(e) => setPartner(e.target.value)} placeholder="اسم شريك السبارينج (اختياري)" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <label className="text-[11px] text-neutral-500">إنهاءات ضربها</label>
+            <input type="number" min="0" value={landed} onChange={(e) => setLanded(e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div className="flex-1">
+            <label className="text-[11px] text-neutral-500">إنهاءات اتضربله</label>
+            <input type="number" min="0" value={received} onChange={(e) => setReceived(e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="ملاحظات (اختياري)" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <button onClick={submit} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold">تسجيل رول</button>
+      </div>
+
+      <div className="space-y-1.5">
+        {rolls.map((r: any) => (
+          <div key={r.id} className="bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5">
+            <div className="flex items-center justify-between">
+              <div className="text-sm">{r.partner_name || "بدون اسم"} <span className="text-neutral-500 text-xs">· {r.date}</span></div>
+              <button onClick={() => onDelete(r.id)} className="text-xs text-neutral-600 hover:text-red-400">حذف</button>
+            </div>
+            <div className="text-[11px] text-neutral-400 mt-1">✅ {r.submissions_landed} ضربها · ❌ {r.submissions_received} اتضربله</div>
+            {r.notes && <div className="text-[11px] text-neutral-500 mt-1">{r.notes}</div>}
+          </div>
+        ))}
+        {rolls.length === 0 && <div className="text-neutral-500 text-xs text-center py-8">مفيش رولز مسجّلة لسه.</div>}
+      </div>
+    </div>
+  );
+}
+
+function ReadinessTab({ readiness }: { readiness: any[] }) {
+  const chartData = [...readiness].reverse().map((r: any) => ({
+    date: r.date.slice(5), نوم: r.sleep_quality, طاقة: r.energy, وجع: r.soreness,
+  }));
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+        <div className="text-sm font-semibold text-neutral-300 mb-1">جاهزية اللاعب</div>
+        <div className="text-[11px] text-neutral-500 mb-3">اللاعب بيسجّلها بنفسه يوميًا من صفحته — عرض فقط هنا.</div>
+        {chartData.length < 2 ? (
+          <div className="text-neutral-500 text-xs text-center py-10">لسه مفيش تسجيلات كفاية.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData}>
+              <CartesianGrid stroke="#1E1E21" />
+              <XAxis dataKey="date" tick={{ fill: "#8B8B8F", fontSize: 11 }} />
+              <YAxis domain={[1, 5]} tick={{ fill: "#8B8B8F", fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: "#17171A", border: "1px solid #2A2A2E", fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Line type="monotone" dataKey="نوم" stroke="#4A9B8E" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="طاقة" stroke="#D4A72C" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="وجع" stroke="#C8102E" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        {readiness.map((r: any) => (
+          <div key={r.id} className="bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5 flex items-center justify-between">
+            <div className="text-xs text-neutral-400">{r.date}</div>
+            <div className="text-xs">😴 {r.sleep_quality}/5 · ⚡ {r.energy}/5 · 🤕 {r.soreness}/5</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const COMPETITION_RESULTS = [
+  "WIN_SUBMISSION", "WIN_POINTS", "WIN_DECISION", "WIN_KO_TKO",
+  "LOSS_SUBMISSION", "LOSS_POINTS", "LOSS_DECISION", "LOSS_KO_TKO", "DRAW", "DQ",
+];
+const RESULT_LABELS: Record<string, string> = {
+  WIN_SUBMISSION: "فوز بإنهاء", WIN_POINTS: "فوز بالنقاط", WIN_DECISION: "فوز بقرار", WIN_KO_TKO: "فوز بضربة قاضية",
+  LOSS_SUBMISSION: "خسارة بإنهاء", LOSS_POINTS: "خسارة بالنقاط", LOSS_DECISION: "خسارة بقرار", LOSS_KO_TKO: "خسارة بضربة قاضية",
+  DRAW: "تعادل", DQ: "استبعاد",
+};
+
+function CompetitionsTab({ competitions, onAdd, onDelete, selectedPlayer }: { competitions: any[]; onAdd: (p: any) => void; onDelete: (id: string) => void; selectedPlayer: any }) {
+  const [name, setName] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [weightClass, setWeightClass] = useState("");
+  const [opponent, setOpponent] = useState("");
+  const [result, setResult] = useState("WIN_SUBMISSION");
+  const [notes, setNotes] = useState("");
+
+  const submit = () => {
+    if (!name.trim()) return;
+    onAdd({ competitionName: name.trim(), date, sport: selectedPlayer.sport, weightClass, opponentName: opponent, result, notes });
+    setName(""); setWeightClass(""); setOpponent(""); setNotes("");
+  };
+
+  const wins = competitions.filter((c) => c.result.startsWith("WIN")).length;
+  const losses = competitions.filter((c) => c.result.startsWith("LOSS")).length;
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex gap-4 items-center justify-center">
+        <div className="text-center"><div className="text-2xl font-bold text-green-400">{wins}</div><div className="text-[11px] text-neutral-500">فوز</div></div>
+        <div className="text-neutral-700">—</div>
+        <div className="text-center"><div className="text-2xl font-bold text-red-400">{losses}</div><div className="text-[11px] text-neutral-500">خسارة</div></div>
+      </div>
+
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-2">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="اسم البطولة" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <div className="flex gap-2">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+          <input value={weightClass} onChange={(e) => setWeightClass(e.target.value)} placeholder="فئة الوزن" className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        </div>
+        <input value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="اسم الخصم (اختياري)" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <select value={result} onChange={(e) => setResult(e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm">
+          {COMPETITION_RESULTS.map((r) => <option key={r} value={r}>{RESULT_LABELS[r]}</option>)}
+        </select>
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="ملاحظات" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+        <button onClick={submit} className="bg-mtrred rounded-lg px-4 py-2 text-sm font-semibold">إضافة نتيجة</button>
+      </div>
+
+      <div className="space-y-2">
+        {competitions.map((c: any) => (
+          <div key={c.id} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sm font-semibold">{c.competition_name}</div>
+              <button onClick={() => onDelete(c.id)} className="text-xs text-neutral-600 hover:text-red-400">حذف</button>
+            </div>
+            <div className={`text-xs font-medium ${c.result.startsWith("WIN") ? "text-green-400" : c.result.startsWith("LOSS") ? "text-red-400" : "text-neutral-400"}`}>
+              {RESULT_LABELS[c.result]}{c.opponent_name ? ` ضد ${c.opponent_name}` : ""}
+            </div>
+            <div className="text-[11px] text-neutral-500 mt-1">{c.date}{c.weight_class ? ` · ${c.weight_class}` : ""}</div>
+            {c.notes && <div className="text-[11px] text-neutral-500 mt-1">{c.notes}</div>}
+          </div>
+        ))}
+        {competitions.length === 0 && <div className="text-neutral-500 text-xs text-center py-8">مفيش نتائج بطولات مسجّلة لسه.</div>}
+      </div>
     </div>
   );
 }

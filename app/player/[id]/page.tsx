@@ -36,6 +36,17 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [checkingIn, setCheckingIn] = useState(false);
   const [checkinMsg, setCheckinMsg] = useState("");
+  const [readiness, setReadiness] = useState<any[]>([]);
+  const [sleepQuality, setSleepQuality] = useState(3);
+  const [energy, setEnergy] = useState(3);
+  const [soreness, setSoreness] = useState(3);
+  const [readinessSaving, setReadinessSaving] = useState(false);
+  const [readinessMsg, setReadinessMsg] = useState("");
+  const [rollPartner, setRollPartner] = useState("");
+  const [rollLanded, setRollLanded] = useState("0");
+  const [rollReceived, setRollReceived] = useState("0");
+  const [rollSaving, setRollSaving] = useState(false);
+  const [rollMsg, setRollMsg] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackImageFile, setFeedbackImageFile] = useState<File | null>(null);
@@ -52,7 +63,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       if (!p) { setNotFound(true); setLoading(false); return; }
       setPlayer(p);
 
-      const [{ data: a }, { data: r }, { data: f }, { data: sch }, { data: mls }, { data: exs }, { data: att }, { data: fb }] = await Promise.all([
+      const [{ data: a }, { data: r }, { data: f }, { data: sch }, { data: mls }, { data: exs }, { data: att }, { data: fb }, { data: rdn }] = await Promise.all([
         supabase.from("skill_assessments").select("*, skill_categories(name,domain)").eq("player_id", playerId).order("date"),
         supabase.from("player_roadmap_items").select("*").eq("player_id", playerId).eq("status", "OPEN").order("priority"),
         supabase.from("player_attachments").select("*").eq("player_id", playerId).order("uploaded_at", { ascending: false }),
@@ -61,6 +72,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
         supabase.from("player_exercises").select("*").eq("player_id", playerId).order("assigned_at", { ascending: false }),
         supabase.from("player_attendance").select("*").eq("player_id", playerId).order("date", { ascending: false }).limit(10),
         supabase.from("player_feedback").select("*").eq("player_id", playerId).order("created_at", { ascending: false }),
+        supabase.from("player_readiness").select("*").eq("player_id", playerId).order("date", { ascending: false }).limit(7),
       ]);
       setAssessments(a || []);
       setRoadmap(r || []);
@@ -70,6 +82,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       setExercises(exs || []);
       setAttendance(att || []);
       setFeedbackThread(fb || []);
+      setReadiness(rdn || []);
       setLoading(false);
     })();
   }, [playerId]);
@@ -77,6 +90,35 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const toggleExercise = async (id: string, completed: boolean) => {
     await supabase.from("player_exercises").update({ completed, completed_at: completed ? new Date().toISOString() : null }).eq("id", id);
     setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, completed } : e)));
+  };
+
+  const todayReadinessDone = readiness.some((r: any) => r.date === new Date().toISOString().slice(0, 10));
+
+  const submitReadiness = async () => {
+    setReadinessSaving(true);
+    const today = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from("player_readiness")
+      .upsert({ player_id: playerId, sleep_quality: sleepQuality, energy, soreness, date: today }, { onConflict: "player_id,date" })
+      .select().single();
+    if (data) setReadiness((prev) => [data, ...prev.filter((r: any) => r.date !== today)]);
+    setReadinessSaving(false);
+    setReadinessMsg("✓ اتسجّلت جاهزيتك النهاردة");
+    setTimeout(() => setReadinessMsg(""), 3000);
+  };
+
+  const submitRoll = async () => {
+    setRollSaving(true);
+    const { data } = await supabase
+      .from("player_rolls")
+      .insert({ player_id: playerId, partner_name: rollPartner.trim() || null, submissions_landed: Number(rollLanded), submissions_received: Number(rollReceived) })
+      .select().single();
+    setRollSaving(false);
+    if (data) {
+      setRollPartner(""); setRollLanded("0"); setRollReceived("0");
+      setRollMsg("✓ اترجل الرول");
+      setTimeout(() => setRollMsg(""), 3000);
+    }
   };
 
   const WEEKDAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -352,6 +394,49 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
             </div>
           </div>
         )}
+
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+          <div className="text-sm font-semibold text-neutral-300 mb-3">جاهزيتك النهاردة</div>
+          {todayReadinessDone ? (
+            <div className="text-xs text-green-400 text-center py-3">✓ سجّلت جاهزيتك النهاردة، شكرًا!</div>
+          ) : (
+            <div className="space-y-3">
+              {[
+                { label: "جودة النوم", val: sleepQuality, set: setSleepQuality, icon: "😴" },
+                { label: "الطاقة", val: energy, set: setEnergy, icon: "⚡" },
+                { label: "الوجع/الإجهاد", val: soreness, set: setSoreness, icon: "🤕" },
+              ].map((f, i) => (
+                <div key={i}>
+                  <label className="text-xs text-neutral-400">{f.icon} {f.label}: {f.val}/5</label>
+                  <input type="range" min={1} max={5} value={f.val} onChange={(e) => f.set(Number(e.target.value))} className="w-full accent-mtrred" />
+                </div>
+              ))}
+              <button onClick={submitReadiness} disabled={readinessSaving} className="w-full bg-mtrred rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50">
+                {readinessSaving ? "..." : "تسجيل الجاهزية"}
+              </button>
+              {readinessMsg && <div className="text-xs text-green-400 text-center">{readinessMsg}</div>}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
+          <div className="text-sm font-semibold text-neutral-300 mb-3">سجّل رول سبارينج</div>
+          <input value={rollPartner} onChange={(e) => setRollPartner(e.target.value)} placeholder="اسم شريك السبارينج (اختياري)" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm mb-2" />
+          <div className="flex gap-2 mb-3">
+            <div className="flex-1">
+              <label className="text-[11px] text-neutral-500">إنهاءات ضربتها</label>
+              <input type="number" min="0" value={rollLanded} onChange={(e) => setRollLanded(e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div className="flex-1">
+              <label className="text-[11px] text-neutral-500">إنهاءات اتضربتلك</label>
+              <input type="number" min="0" value={rollReceived} onChange={(e) => setRollReceived(e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <button onClick={submitRoll} disabled={rollSaving} className="w-full bg-mtrred rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50">
+            {rollSaving ? "..." : "تسجيل الرول"}
+          </button>
+          {rollMsg && <div className="text-xs text-green-400 text-center mt-2">{rollMsg}</div>}
+        </div>
 
         <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
           <div className="text-sm font-semibold text-neutral-300 mb-2">إشعارات</div>
