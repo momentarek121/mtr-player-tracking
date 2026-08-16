@@ -98,6 +98,147 @@ const TOOLS = [
   },
 ];
 
+const OWNER_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "broadcast_exercise",
+      description: "وزّع تمرين واحد على مجموعة لاعبين أو على الكل مرة واحدة.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          dueDate: { type: "string", description: "تاريخ الاستحقاق YYYY-MM-DD (اختياري)" },
+          players: {
+            type: "array",
+            items: { type: "string" },
+            description: "أسماء اللاعبين المستهدفين، أو مصفوفة فيها كلمة واحدة 'ALL' لو عايز كل اللاعبين",
+          },
+        },
+        required: ["title", "players"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "broadcast_meal",
+      description: "وزّع وجبة أو نظام غذائي على مجموعة لاعبين أو على الكل.",
+      parameters: {
+        type: "object",
+        properties: {
+          mealTime: { type: "string" },
+          title: { type: "string" },
+          description: { type: "string" },
+          players: { type: "array", items: { type: "string" } },
+        },
+        required: ["mealTime", "title", "players"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "broadcast_note",
+      description: "أضف نفس الملاحظة لمجموعة لاعبين أو للكل.",
+      parameters: {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+          players: { type: "array", items: { type: "string" } },
+        },
+        required: ["content", "players"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "broadcast_schedule_item",
+      description: "أضف موعد تدريب لجدول مجموعة لاعبين أو للكل.",
+      parameters: {
+        type: "object",
+        properties: {
+          dayOfWeek: { type: "string" },
+          timeLabel: { type: "string" },
+          activity: { type: "string" },
+          players: { type: "array", items: { type: "string" } },
+        },
+        required: ["dayOfWeek", "activity", "players"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "broadcast_goal",
+      description: "أضف نفس هدف التطوير بتاريخ مستهدف لمجموعة لاعبين أو للكل.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          targetDate: { type: "string", description: "YYYY-MM-DD" },
+          players: { type: "array", items: { type: "string" } },
+        },
+        required: ["title", "targetDate", "players"],
+      },
+    },
+  },
+];
+
+async function resolveTargetPlayers(playersArg: any) {
+  const { data: allPlayers } = await supabase.from("players").select("id, name").eq("approval_status", "APPROVED");
+  const list = allPlayers || [];
+  const names = Array.isArray(playersArg) ? playersArg : [playersArg];
+  if (names.some((n: string) => n?.toUpperCase() === "ALL")) return list;
+  return list.filter((p: any) => names.some((n: string) => p.name.toLowerCase().includes(String(n).toLowerCase())));
+}
+
+async function execOwnerTool(name: string, args: any) {
+  const targets = await resolveTargetPlayers(args.players);
+  if (targets.length === 0) return { ok: false, message: "مفيش لاعبين متطابقين مع الأسماء دي." };
+  const names = targets.map((p: any) => p.name).join("، ");
+
+  if (name === "broadcast_exercise") {
+    await supabase.from("player_exercises").insert(
+      targets.map((p: any) => ({ player_id: p.id, title: args.title, description: args.description || null, due_date: args.dueDate || null }))
+    );
+    return { ok: true, message: `اتضاف تمرين "${args.title}" لـ ${targets.length} لاعب: ${names}` };
+  }
+
+  if (name === "broadcast_meal") {
+    await supabase.from("player_meals").insert(
+      targets.map((p: any) => ({ player_id: p.id, meal_time: args.mealTime, title: args.title, description: args.description || null }))
+    );
+    return { ok: true, message: `اتضافت وجبة "${args.title}" لـ ${targets.length} لاعب: ${names}` };
+  }
+
+  if (name === "broadcast_note") {
+    await supabase.from("player_notes").insert(
+      targets.map((p: any) => ({ player_id: p.id, content: args.content, source: "AI" }))
+    );
+    return { ok: true, message: `اتضافت ملاحظة لـ ${targets.length} لاعب: ${names}` };
+  }
+
+  if (name === "broadcast_schedule_item") {
+    await supabase.from("player_schedule").insert(
+      targets.map((p: any) => ({ player_id: p.id, day_of_week: args.dayOfWeek, time_label: args.timeLabel || null, activity: args.activity }))
+    );
+    return { ok: true, message: `اتضاف للجدول لـ ${targets.length} لاعب: ${names}` };
+  }
+
+  if (name === "broadcast_goal") {
+    await supabase.from("player_goals").insert(
+      targets.map((p: any) => ({ player_id: p.id, title: args.title, description: args.description || null, target_date: args.targetDate, source: "AI" }))
+    );
+    return { ok: true, message: `اتضاف هدف "${args.title}" لـ ${targets.length} لاعب: ${names}` };
+  }
+
+  return { ok: false, message: "أداة غير معروفة." };
+}
+
 async function execTool(playerId: string, name: string, args: any) {
   if (name === "log_skill_assessment") {
     const { data: skill } = await supabase
@@ -175,6 +316,7 @@ export async function POST(req: NextRequest) {
 
   const { playerId, messages, audience } = await req.json();
   const canWrite = audience === "coach" && !!playerId;
+  const ownerCanWrite = audience === "owner";
 
   let contextBlock = "";
   let skillNamesList = "";
@@ -251,11 +393,15 @@ ${expiringSoon.map((s: any) => {
   const p = (players || []).find((x: any) => x.id === s.player_id);
   return `- ${p?.name || s.player_id}: ${s.end_date}`;
 }).join("\n") || "مفيش اشتراكات هتنتهي قريب"}
+
+أسماء كل اللاعبين (استخدمها بالظبط لما تحدد لمين توزّع حاجة): ${(players || []).map((p: any) => p.name).join("، ")}
 `.trim();
   }
 
   const toolsInstruction = canWrite
     ? `\n\nعندك أدوات (tools) تقدر تستخدمها لما الكوتش يطلب منك تسجّل حاجة فعليًا في النظام، مش بس تتكلم عنها: تسجيل تقييم مهارة برقم، إضافة ملاحظة، إضافة هدف تطوير بتاريخ، إضافة وجبة لخطة غذائية، تكليف اللاعب بتمرين، أو إضافة موعد لجدوله الأسبوعي. لو الكوتش قال حاجة زي "ابعتله كذا" أو "حط له خطة غذائية كذا" أو "كلّفه بالتمرين ده"، استخدم الأداة المناسبة على طول من غير ما تستأذن — الكوتش هيقدر يراجع ويعدّل أي حاجة تسجّلها يدويًا بعد كده من التابات التانية. متسجّلش حاجة لو الكلام عام أو مجرد سؤال.`
+    : ownerCanWrite
+    ? `\n\nعندك أدوات (tools) توزّع بيها تمرين أو وجبة أو ملاحظة أو موعد جدول أو هدف تطوير بتاريخ على أكتر من لاعب مرة واحدة. لو صاحب النظام قال "وزّع كذا على الكل" استخدم مصفوفة فيها "ALL" بس في خانة players. لو قال أسماء محددة، استخدم أسمائهم بالظبط زي ما هي في قايمة اللاعبين اللي وصلتك. استخدم الأداة على طول من غير ما تستأذن — هيقدر يراجع ويعدّل بعد كده لكل لاعب لوحده.`
     : "";
 
   const systemPrompt = `أنت مساعد ذكي متخصص في رياضتي الجوجيتسو (BJJ) والـ MMA، بتساعد ${
@@ -273,6 +419,9 @@ ${contextBlock}`;
     };
     if (canWrite) {
       body.tools = TOOLS;
+      body.tool_choice = "auto";
+    } else if (ownerCanWrite) {
+      body.tools = OWNER_TOOLS;
       body.tool_choice = "auto";
     }
 
@@ -305,7 +454,9 @@ ${contextBlock}`;
       for (const call of choice.tool_calls) {
         let args: any = {};
         try { args = JSON.parse(call.function.arguments); } catch {}
-        const result = await execTool(playerId, call.function.name, args);
+        const result = ownerCanWrite
+          ? await execOwnerTool(call.function.name, args)
+          : await execTool(playerId, call.function.name, args);
         if (result.ok) actionsTaken.push(result.message);
         toolResultMessages.push({
           role: "tool",

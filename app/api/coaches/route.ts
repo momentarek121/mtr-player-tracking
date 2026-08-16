@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     while (!foundId) {
       const { data: list, error: listErr } = await supabase.auth.admin.listUsers({ page, perPage: 200 });
       if (listErr || !list?.users?.length) break;
-      const match = list.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+      const match = list.users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
       if (match) foundId = match.id;
       if (list.users.length < 200) break;
       page++;

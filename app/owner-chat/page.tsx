@@ -6,7 +6,7 @@ import { useCoachAuth } from "@/lib/useCoachAuth";
 
 export default function OwnerChatPage() {
   const { loading: authLoading, coach, denied } = useCoachAuth();
-  const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
+  const [messages, setMessages] = useState<{ role: string; content: string; actionsTaken?: string[] }[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -16,8 +16,8 @@ export default function OwnerChatPage() {
   const send = async () => {
     if (!input.trim() || sending) return;
     const userMsg = { role: "user", content: input.trim() };
-    const nextMessages = [...messages, userMsg];
-    setMessages(nextMessages);
+    const nextMessages = [...messages.map(({ role, content }) => ({ role, content })), userMsg];
+    setMessages([...messages, { role: "user", content: input.trim() }]);
     setInput("");
     setSending(true);
     setError("");
@@ -30,7 +30,7 @@ export default function OwnerChatPage() {
       });
       const data = await res.json();
       if (data.error) { setError(data.error); setSending(false); return; }
-      setMessages([...nextMessages, { role: "assistant", content: data.reply }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: data.reply, actionsTaken: data.actionsTaken }]);
     } catch (e: any) {
       setError(e.message);
     } finally {
