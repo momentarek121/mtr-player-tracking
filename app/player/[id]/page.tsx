@@ -28,11 +28,17 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
   return <div className="bg-neutral-900 rounded-lg p-2 text-center"><div className="text-[10px] text-neutral-500">{label}</div><div className="text-xs font-semibold mt-1">{value}</div></div>;
 }
 
+function ReviewBadge({ status, source }: { status?: string; source?: string }) {
+  const draft = status === "DRAFT" || source === "PLAYER_AI";
+  return <span className={`text-[10px] rounded-full px-2 py-1 ${draft ? "text-mtrgold bg-mtrgold/10" : "text-teal-400 bg-teal-400/10"}`}>{draft ? "مسودة — تحتاج مراجعة المدرب" : "معتمدة"}</span>;
+}
+
 export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const playerId = params.id;
   const [player, setPlayer] = useState<any>(null);
   const [assessments, setAssessments] = useState<any[]>([]);
   const [roadmap, setRoadmap] = useState<any[]>([]);
+  const [chatGoals, setChatGoals] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [schedule, setSchedule] = useState<any[]>([]);
   const [meals, setMeals] = useState<any[]>([]);
@@ -76,7 +82,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       if (!p) { setNotFound(true); setLoading(false); return; }
       setPlayer(p);
 
-      const [{ data: a }, { data: r }, { data: f }, { data: sch }, { data: mls }, { data: exs }, { data: att }, { data: fb }, { data: rdn }] = await Promise.all([
+      const [{ data: a }, { data: r }, { data: f }, { data: sch }, { data: mls }, { data: exs }, { data: att }, { data: fb }, { data: rdn }, { data: gls }] = await Promise.all([
         supabase.from("skill_assessments").select("*, skill_categories(name,domain)").eq("player_id", playerId).order("date"),
         supabase.from("player_roadmap_items").select("*").eq("player_id", playerId).eq("status", "OPEN").order("priority"),
         supabase.from("player_attachments").select("*").eq("player_id", playerId).order("uploaded_at", { ascending: false }),
@@ -86,6 +92,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
         supabase.from("player_attendance").select("*").eq("player_id", playerId).order("date", { ascending: false }).limit(10),
         supabase.from("player_feedback").select("*").eq("player_id", playerId).order("created_at", { ascending: false }),
         supabase.from("player_readiness").select("*").eq("player_id", playerId).order("date", { ascending: false }).limit(7),
+        supabase.from("player_goals").select("*").eq("player_id", playerId).order("created_at", { ascending: false }).limit(20),
       ]);
       setAssessments(a || []);
       setRoadmap(r || []);
@@ -96,6 +103,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       setAttendance(att || []);
       setFeedbackThread(fb || []);
       setReadiness(rdn || []);
+      setChatGoals(gls || []);
       setLoading(false);
     })();
   }, [playerId]);
@@ -466,6 +474,20 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
             </div>
           )}
         </div>
+
+        {(chatGoals.some((g: any) => g.source === "PLAYER_AI") || meals.some((m: any) => m.source === "PLAYER_AI") || exercises.some((e: any) => e.source === "PLAYER_AI")) && (
+          <div className="bg-neutral-950 border border-mtrgold/30 rounded-xl p-5">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div><div className="text-sm font-semibold text-neutral-200">خطة الشات</div><div className="text-[11px] text-neutral-500 mt-1">أي اقتراح من المساعد يظهر هنا ويتحول لخطة بعد مراجعة المدرب.</div></div>
+              <div className="text-[10px] text-mtrgold bg-mtrgold/10 rounded-full px-2.5 py-1">AI PLAN</div>
+            </div>
+            <div className="space-y-2">
+              {chatGoals.filter((g: any) => g.source === "PLAYER_AI").slice(0, 5).map((g: any) => <div key={`goal-${g.id}`} className="bg-neutral-900 border border-neutral-800 rounded-lg p-3"><div className="flex items-center justify-between gap-2"><div className="text-sm font-semibold">هدف: {g.title}</div><ReviewBadge status={g.review_status} source={g.source} /></div>{g.description && <div className="text-xs text-neutral-500 mt-1">{g.description}</div>}{g.target_date && <div className="text-[10px] text-neutral-600 mt-1">الموعد: {g.target_date}</div>}</div>)}
+              {exercises.filter((e: any) => e.source === "PLAYER_AI").slice(0, 5).map((e: any) => <div key={`exercise-${e.id}`} className="bg-neutral-900 border border-neutral-800 rounded-lg p-3"><div className="flex items-center justify-between gap-2"><div className="text-sm font-semibold">تمرين: {e.title}</div><ReviewBadge status={e.review_status} source={e.source} /></div>{e.description && <div className="text-xs text-neutral-500 mt-1">{e.description}</div>}{e.due_date && <div className="text-[10px] text-neutral-600 mt-1">الموعد: {e.due_date}</div>}</div>)}
+              {meals.filter((m: any) => m.source === "PLAYER_AI").slice(0, 5).map((m: any) => <div key={`meal-${m.id}`} className="bg-neutral-900 border border-neutral-800 rounded-lg p-3"><div className="flex items-center justify-between gap-2"><div className="text-sm font-semibold">وجبة: {m.title}</div><ReviewBadge status={m.review_status} source={m.source} /></div><div className="text-xs text-mtrgold mt-1">{m.meal_time}</div>{m.description && <div className="text-xs text-neutral-500 mt-1">{m.description}</div>}</div>)}
+            </div>
+          </div>
+        )}
 
         {performancePrograms.length > 0 && (
           <div className="bg-neutral-950 border border-teal-700/40 rounded-xl p-5">

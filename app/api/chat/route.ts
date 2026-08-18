@@ -334,17 +334,17 @@ async function execTool(playerId: string, name: string, args: any) {
   }
 
   if (name === "create_player_goal") {
-    await supabase.from("player_goals").insert({ player_id: playerId, title: args.title, description: args.description || "هدف أنشأه اللاعب من الشات ويحتاج متابعة المدرب.", target_date: args.targetDate || null, source: "PLAYER_AI" });
+    await supabase.from("player_goals").insert({ player_id: playerId, title: args.title, description: args.description || "هدف أنشأه اللاعب من الشات ويحتاج متابعة المدرب.", target_date: args.targetDate || null, source: "PLAYER_AI", review_status: "DRAFT" });
     return { ok: true, message: `اتضاف هدفك: "${args.title}" — والمدرب يقدر يراجعه ويعدّله.` };
   }
 
   if (name === "assign_player_exercise") {
-    await supabase.from("player_exercises").insert({ player_id: playerId, title: args.title, description: `مسودة AI — تحتاج مراجعة المدرب. ${args.description || ""}`.trim(), due_date: args.dueDate || null });
+    await supabase.from("player_exercises").insert({ player_id: playerId, title: args.title, description: args.description || null, due_date: args.dueDate || null, source: "PLAYER_AI", review_status: "DRAFT" });
     return { ok: true, message: `اتضاف لك تمرين: "${args.title}" — كمسودة قابلة لمراجعة المدرب.` };
   }
 
   if (name === "add_player_meal_draft") {
-    await supabase.from("player_meals").insert({ player_id: playerId, meal_time: args.mealTime, title: args.title, description: `مسودة AI — تحتاج مراجعة المدرب/أخصائي التغذية. ${args.description || ""}`.trim() });
+    await supabase.from("player_meals").insert({ player_id: playerId, meal_time: args.mealTime, title: args.title, description: args.description || null, source: "PLAYER_AI", review_status: "DRAFT" });
     return { ok: true, message: `اتضاف اقتراح غذائي كمسودة: "${args.title}" — راجعه مع المدرب قبل الاعتماد.` };
   }
 

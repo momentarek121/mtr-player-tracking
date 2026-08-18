@@ -55,7 +55,7 @@ export default function Page() {
   const [deleting, setDeleting] = useState(false);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
-    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals" | "playerchat" | "weight" | "rolls" | "readiness" | "competitions" | "fightcamp"
+    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals" | "review" | "playerchat" | "weight" | "rolls" | "readiness" | "competitions" | "fightcamp"
   >("overview");
   const [loading, setLoading] = useState(true);
 
@@ -254,6 +254,21 @@ export default function Page() {
   const deleteGoal = async (itemId: string) => {
     if (!selectedId) return;
     await fetch(`/api/players/${selectedId}/goals?itemId=${itemId}`, { method: "DELETE" });
+    await loadPlayerData(selectedId);
+  };
+
+  const reviewPlanItem = async (type: "goal" | "exercise" | "meal", item: any, values: { title?: string; description?: string; targetDate?: string; dueDate?: string; mealTime?: string; reviewNote?: string }, reviewStatus: "APPROVED" | "NEEDS_CHANGES") => {
+    if (!selectedId) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const endpoint = type === "goal" ? "goals" : type === "exercise" ? "exercises" : "nutrition";
+    const body = { itemId: item.id, playerId: selectedId, ...values, reviewStatus };
+    const res = await fetch(`/api/players/${selectedId}/${endpoint}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) { alert(json.error || "فشل تحديث حالة الخطة"); return; }
     await loadPlayerData(selectedId);
   };
 
@@ -734,6 +749,7 @@ export default function Page() {
                 ["assess", "تسجيل تقييم"],
                 ["roadmap", "خطة التطوير"],
                 ["goals", "أهداف بتاريخ"],
+                ["review", "مراجعة AI"],
                 ["playerchat", "شات اللاعب"],
                 ["weight", "الوزن"],
                 ["rolls", "سجل السبارينج"],
@@ -786,6 +802,7 @@ export default function Page() {
             {tab === "goals" && (
               <GoalsTab goals={goals} onAdd={addGoal} onToggle={toggleGoal} onEditDate={editGoalDate} onDelete={deleteGoal} />
             )}
+            {tab === "review" && <ReviewPlansTab goals={goals} meals={meals} exercises={exercises} onReview={reviewPlanItem} />}
             {tab === "playerchat" && <PlayerChatLogTab logs={playerChatLogs} />}
             {tab === "weight" && <WeightTab log={weightLog} onAdd={addWeightEntry} onDelete={deleteWeightEntry} />}
             {tab === "rolls" && <RollsTab rolls={rolls} onAdd={addRoll} onDelete={deleteRoll} />}
@@ -1068,6 +1085,42 @@ function RoadmapTab({ roadmap }: { roadmap: any[] }) {
             <div className="text-sm font-semibold mb-1">{item.title}</div>
             <div className="text-xs text-neutral-400 leading-relaxed">{item.recommendation}</div>
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReviewPlansTab({
+  goals, meals, exercises, onReview,
+}: {
+  goals: any[];
+  meals: any[];
+  exercises: any[];
+  onReview: (type: "goal" | "exercise" | "meal", item: any, values: { title?: string; description?: string; targetDate?: string; dueDate?: string; mealTime?: string; reviewNote?: string }, status: "APPROVED" | "NEEDS_CHANGES") => void;
+}) {
+  const drafts = [
+    ...goals.filter((x) => x.source === "PLAYER_AI" && x.review_status !== "APPROVED").map((item) => ({ type: "goal" as const, item, label: "هدف" })),
+    ...exercises.filter((x) => x.source === "PLAYER_AI" && x.review_status !== "APPROVED").map((item) => ({ type: "exercise" as const, item, label: "تمرين" })),
+    ...meals.filter((x) => x.source === "PLAYER_AI" && x.review_status !== "APPROVED").map((item) => ({ type: "meal" as const, item, label: "وجبة" })),
+  ];
+  const [values, setValues] = useState<Record<string, any>>({});
+  const getValue = (item: any, key: string) => values[item.id]?.[key] ?? item[key];
+  const setValue = (item: any, key: string, value: string) => setValues((prev) => ({ ...prev, [item.id]: { ...prev[item.id], [key]: value } }));
+
+  if (drafts.length === 0) return <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-8 text-center text-neutral-500 text-sm">مفيش مسودات AI مستنية مراجعتك للاعب ده.</div>;
+  return (
+    <div className="space-y-3">
+      <div className="bg-mtrgold/10 border border-mtrgold/30 rounded-xl p-4 text-xs text-neutral-300">راجع المحتوى قبل اعتماده. اللاعب يشوف المسودة بوضوح، ولا تعتبر جزءًا من خطته التنفيذية إلا بعد الضغط على اعتماد.</div>
+      {drafts.map(({ type, item, label }) => (
+        <div key={`${type}-${item.id}`} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-2">
+          <div className="flex items-center justify-between gap-2"><div className="text-sm font-semibold">{label} من شات اللاعب</div><span className="text-[10px] text-mtrgold bg-mtrgold/10 rounded-full px-2 py-1">DRAFT</span></div>
+          <input value={getValue(item, "title")} onChange={(e) => setValue(item, "title", e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" placeholder="العنوان" />
+          <textarea value={getValue(item, "description") || ""} onChange={(e) => setValue(item, "description", e.target.value)} className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="التفاصيل" />
+          {type === "goal" && <input type="date" value={getValue(item, "targetDate") ?? item.target_date ?? ""} onChange={(e) => setValue(item, "targetDate", e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />}
+          {type === "exercise" && <input type="date" value={getValue(item, "dueDate") ?? item.due_date ?? ""} onChange={(e) => setValue(item, "dueDate", e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" />}
+          {type === "meal" && <input value={getValue(item, "mealTime") ?? item.meal_time ?? ""} onChange={(e) => setValue(item, "mealTime", e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm" placeholder="موعد الوجبة" />}
+          <div className="flex gap-2 pt-1"><button onClick={() => onReview(type, item, { title: getValue(item, "title"), description: getValue(item, "description"), targetDate: getValue(item, "targetDate") ?? item.target_date, dueDate: getValue(item, "dueDate") ?? item.due_date, mealTime: getValue(item, "mealTime") ?? item.meal_time }, "APPROVED")} className="flex-1 bg-teal-700 hover:bg-teal-600 rounded-lg py-2 text-xs font-semibold">اعتماد الخطة</button><button onClick={() => onReview(type, item, { title: getValue(item, "title"), description: getValue(item, "description"), reviewNote: "تحتاج تعديل قبل الاعتماد" }, "NEEDS_CHANGES")} className="flex-1 bg-neutral-900 border border-mtrred/50 text-red-300 rounded-lg py-2 text-xs font-semibold">إرجاع للتعديل</button></div>
         </div>
       ))}
     </div>
