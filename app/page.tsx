@@ -43,6 +43,8 @@ export default function Page() {
   const [rolls, setRolls] = useState<any[]>([]);
   const [readiness, setReadiness] = useState<any[]>([]);
   const [competitions, setCompetitions] = useState<any[]>([]);
+  const [fightCamps, setFightCamps] = useState<any[]>([]);
+  const [fightCampTasks, setFightCampTasks] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -53,7 +55,7 @@ export default function Page() {
   const [deleting, setDeleting] = useState(false);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
-    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals" | "playerchat" | "weight" | "rolls" | "readiness" | "competitions"
+    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals" | "playerchat" | "weight" | "rolls" | "readiness" | "competitions" | "fightcamp"
   >("overview");
   const [loading, setLoading] = useState(true);
 
@@ -77,7 +79,7 @@ export default function Page() {
   };
 
   const loadPlayerData = async (playerId: string) => {
-    const [a, r, n, f, s, c, sch, mls, exs, fb, subs, att, gls, chatLogs, wl, rls, rdn, comp] = await Promise.all([
+    const [a, r, n, f, s, c, sch, mls, exs, fb, subs, att, gls, chatLogs, wl, rls, rdn, comp, compFight] = await Promise.all([
       fetch(`/api/players/${playerId}/analytics`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/roadmap`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/notes`).then((r) => r.json()),
@@ -96,6 +98,7 @@ export default function Page() {
       fetch(`/api/players/${playerId}/rolls`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/readiness`).then((r) => r.json()),
       fetch(`/api/players/${playerId}/competitions`).then((r) => r.json()),
+      fetch(`/api/players/${playerId}/fight-camp`).then((r) => r.json()),
     ]);
     setAnalytics(a);
     setRoadmap(r.roadmap || []);
@@ -115,6 +118,8 @@ export default function Page() {
     setRolls(rls.rolls || []);
     setReadiness(rdn.readiness || []);
     setCompetitions(comp.competitions || []);
+    setFightCamps(compFight.camps || []);
+    setFightCampTasks(compFight.tasks || []);
   };
 
   const addScheduleItem = async (dayOfWeek: string, timeLabel: string, activity: string) => {
@@ -734,6 +739,7 @@ export default function Page() {
                 ["rolls", "سجل السبارينج"],
                 ["readiness", "الجاهزية"],
                 ["competitions", "البطولات"],
+                ["fightcamp", "Fight Camp"],
                 ["curriculum", "متطلبات الحزام"],
                 ["schedule", "الجدول"],
                 ["nutrition", "التغذية"],
@@ -785,6 +791,7 @@ export default function Page() {
             {tab === "rolls" && <RollsTab rolls={rolls} onAdd={addRoll} onDelete={deleteRoll} />}
             {tab === "readiness" && <ReadinessTab readiness={readiness} />}
             {tab === "competitions" && <CompetitionsTab competitions={competitions} onAdd={addCompetition} onDelete={deleteCompetition} selectedPlayer={selectedPlayer} />}
+            {tab === "fightcamp" && <FightCampTab playerId={selectedPlayer.id} camps={fightCamps} tasks={fightCampTasks} onChanged={() => loadPlayerData(selectedPlayer.id)} />}
             {tab === "curriculum" && (
               <CurriculumTab
                 curriculum={curriculum}
@@ -1332,6 +1339,54 @@ const RESULT_LABELS: Record<string, string> = {
   LOSS_SUBMISSION: "خسارة بإنهاء", LOSS_POINTS: "خسارة بالنقاط", LOSS_DECISION: "خسارة بقرار", LOSS_KO_TKO: "خسارة بضربة قاضية",
   DRAW: "تعادل", DQ: "استبعاد",
 };
+
+function FightCampTab({ playerId, camps, tasks, onChanged }: { playerId: string; camps: any[]; tasks: any[]; onChanged: () => void }) {
+  const [title, setTitle] = useState("");
+  const [competitionName, setCompetitionName] = useState("");
+  const [competitionDate, setCompetitionDate] = useState("");
+  const [targetWeightKg, setTargetWeightKg] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskCategory, setTaskCategory] = useState("TRAINING");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [selectedCamp, setSelectedCamp] = useState(camps[0]?.id || "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (!selectedCamp && camps[0]?.id) setSelectedCamp(camps[0].id); }, [camps, selectedCamp]);
+  const createCamp = async () => {
+    if (!title.trim()) return;
+    setSaving(true);
+    await fetch(`/api/players/${playerId}/fight-camp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: title.trim(), competitionName, competitionDate, targetWeightKg: targetWeightKg ? Number(targetWeightKg) : null }) });
+    setTitle(""); setCompetitionName(""); setCompetitionDate(""); setTargetWeightKg(""); setSaving(false); onChanged();
+  };
+  const addTask = async () => {
+    if (!selectedCamp || !taskTitle.trim()) return;
+    setSaving(true);
+    await fetch(`/api/players/${playerId}/fight-camp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "task", campId: selectedCamp, title: taskTitle.trim(), category: taskCategory, dueDate: taskDueDate || null }) });
+    setTaskTitle(""); setTaskDueDate(""); setSaving(false); onChanged();
+  };
+  const updateCamp = async (id: string, currentPhase: string) => {
+    await fetch(`/api/players/${playerId}/fight-camp`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemId: id, currentPhase }) });
+    onChanged();
+  };
+  const toggleTask = async (id: string, completed: boolean) => {
+    await fetch(`/api/players/${playerId}/fight-camp`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "task", itemId: id, completed }) });
+    onChanged();
+  };
+  const phaseLabels: Record<string, string> = { BUILD: "بناء", INTENSIFY: "تكثيف", TAPER: "تخفيف الحمل", FIGHT_WEEK: "أسبوع البطولة", RECOVERY: "استشفاء" };
+  return <div className="space-y-4">
+    <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-3">
+      <div><div className="text-sm font-semibold text-neutral-200">إنشاء معسكر جديد</div><div className="text-[11px] text-neutral-500 mt-1">اربط البطولة بالوزن والمهام التي سيشاهدها اللاعب.</div></div>
+      <div className="grid grid-cols-2 gap-2"><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="اسم المعسكر" className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-xs" /><input value={competitionName} onChange={(e) => setCompetitionName(e.target.value)} placeholder="اسم البطولة" className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-xs" /><input type="date" value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-xs" /><input type="number" value={targetWeightKg} onChange={(e) => setTargetWeightKg(e.target.value)} placeholder="الوزن المستهدف كجم" className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-xs" /></div>
+      <button onClick={createCamp} disabled={saving || !title.trim()} className="bg-mtrred rounded-lg px-4 py-2 text-xs font-semibold disabled:opacity-50">إنشاء المعسكر</button>
+    </div>
+    {camps.map((camp: any) => <div key={camp.id} className="bg-neutral-950 border border-mtrred/30 rounded-xl p-5 space-y-4">
+      <div className="flex items-start justify-between gap-3"><div><div className="text-base font-semibold">{camp.title}</div><div className="text-xs text-neutral-500 mt-1">{camp.competition_name || "بدون بطولة"}{camp.competition_date ? ` · ${camp.competition_date}` : ""}{camp.target_weight_kg ? ` · ${camp.target_weight_kg} كجم` : ""}</div></div><select value={camp.current_phase} onChange={(e) => updateCamp(camp.id, e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-2 py-1.5 text-xs">{Object.entries(phaseLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+      <div className="grid grid-cols-2 gap-2"><input value={selectedCamp === camp.id ? taskTitle : ""} onChange={(e) => { setSelectedCamp(camp.id); setTaskTitle(e.target.value); }} placeholder="مهمة جديدة للمعسكر" className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-xs" /><select value={selectedCamp === camp.id ? taskCategory : "TRAINING"} onChange={(e) => { setSelectedCamp(camp.id); setTaskCategory(e.target.value); }} className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-xs"><option value="TRAINING">تدريب</option><option value="SPARRING">Sparring</option><option value="STRENGTH">قوة</option><option value="NUTRITION">تغذية</option><option value="WEIGHT">وزن</option><option value="RECOVERY">استشفاء</option><option value="VIDEO_REVIEW">مراجعة فيديو</option></select></div><div className="flex gap-2"><input type="date" value={selectedCamp === camp.id ? taskDueDate : ""} onChange={(e) => { setSelectedCamp(camp.id); setTaskDueDate(e.target.value); }} className="flex-1 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-xs" /><button onClick={addTask} className="bg-neutral-800 border border-neutral-700 rounded-lg px-4 text-xs">إضافة مهمة</button></div>
+      <div className="space-y-2">{tasks.filter((task: any) => task.camp_id === camp.id).map((task: any) => <label key={task.id} className="flex items-center gap-3 bg-neutral-900 rounded-lg px-3 py-2.5 cursor-pointer"><input type="checkbox" checked={task.completed} onChange={(e) => toggleTask(task.id, e.target.checked)} className="accent-mtrred" /><span className={`text-xs ${task.completed ? "line-through text-neutral-600" : "text-neutral-300"}`}>{task.title}</span><span className="mr-auto text-[10px] text-neutral-600">{task.category}{task.due_date ? ` · ${task.due_date}` : ""}</span></label>)}</div>
+    </div>)}
+    {camps.length === 0 && <div className="bg-neutral-950 border border-dashed border-neutral-800 rounded-xl p-8 text-center text-xs text-neutral-500">لم يتم إنشاء معسكر لهذا اللاعب بعد.</div>}
+  </div>;
+}
 
 function CompetitionsTab({ competitions, onAdd, onDelete, selectedPlayer }: { competitions: any[]; onAdd: (p: any) => void; onDelete: (id: string) => void; selectedPlayer: any }) {
   const [name, setName] = useState("");
