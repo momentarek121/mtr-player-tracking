@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase-admin";
 import { generateRoadmapForPlayer } from "@/lib/roadmap-engine";
 import { getAuthenticatedPerformanceCoach } from "@/lib/server-auth";
 
-const MODEL = "llama-3.3-70b-versatile";
+const MODEL = "openai/gpt-oss-120b";
 
 const TOOLS = [
   {
@@ -440,7 +440,7 @@ ${contextBlock}`;
       model: MODEL,
       messages: [{ role: "system", content: systemPrompt }, ...messages],
       temperature: 0.5,
-      max_tokens: 700,
+      max_completion_tokens: 700,
     };
     if (canWrite) {
       body.tools = TOOLS;
@@ -502,7 +502,7 @@ ${contextBlock}`;
             ...toolResultMessages,
           ],
           temperature: 0.5,
-          max_tokens: 500,
+          max_completion_tokens: 500,
         }),
       });
       const followUpData = await followUp.json();
