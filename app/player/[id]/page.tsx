@@ -24,6 +24,10 @@ const BELT_COLORS: Record<string, string> = {
 
 const monthKey = (iso: string) => iso.slice(0, 7);
 
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return <div className="bg-neutral-900 rounded-lg p-2 text-center"><div className="text-[10px] text-neutral-500">{label}</div><div className="text-xs font-semibold mt-1">{value}</div></div>;
+}
+
 export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const playerId = params.id;
   const [player, setPlayer] = useState<any>(null);
@@ -285,6 +289,23 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   }
 
   const hasRadarData = domainAverages.some((d) => d.value > 0);
+  const activeCamp = fightCamps[0];
+  const competitionDate = activeCamp?.competition_date ? new Date(`${activeCamp.competition_date}T12:00:00`) : null;
+  const daysToCompetition = competitionDate ? Math.ceil((competitionDate.getTime() - new Date(`${todayIso}T12:00:00`).getTime()) / 86400000) : null;
+  const targetWeight = activeCamp?.target_weight_kg ?? activeCamp?.target_weight ?? null;
+  const weightDelta = targetWeight != null && player.weight_kg != null ? Number(player.weight_kg) - Number(targetWeight) : null;
+  const latestReadiness = readiness[0];
+  const readinessScore = latestReadiness ? Math.round(((Number(latestReadiness.sleep_quality || 0) + Number(latestReadiness.energy || 0) + (6 - Number(latestReadiness.soreness || 0))) / 15) * 100) : null;
+  const openCampTasks = fightCampTasks.filter((task: any) => !task.completed);
+  const dueTodayTasks = openCampTasks.filter((task: any) => task.due_date === todayIso);
+  const nextCampTask = openCampTasks[0];
+  const playerDecision = dueTodayTasks.length > 0
+    ? `ابدأ بـ ${dueTodayTasks[0].title}`
+    : nextCampTask
+      ? `ركّز على ${nextCampTask.title}`
+      : !todayReadinessDone
+        ? "سجّل جاهزيتك قبل التمرين"
+        : "راجع خطتك ونفّذ جلسة اليوم";
 
   return (
     <div dir="rtl" className="min-h-screen p-4 md:p-10 max-w-2xl mx-auto">
@@ -293,7 +314,7 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
         <div className="text-xs text-neutral-500">بروفايل اللاعب — عرض فقط</div>
       </div>
 
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex items-center gap-4 mb-6">
         <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0" style={{ background: BELT_COLORS[player.current_belt] }}>
           {player.photo_url && <img src={player.photo_url} alt="" className="w-full h-full object-cover" />}
         </div>
@@ -303,6 +324,41 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
             {player.player_code && <span className="text-neutral-600">{player.player_code} · </span>}
             {player.sport} · حزام {BELT_LABELS[player.current_belt]} · {player.weight_kg} كجم
           </div>
+        </div>
+      </div>
+
+      <div className="bg-gradient-to-br from-mtrred/20 via-neutral-950 to-neutral-950 border border-mtrred/50 rounded-2xl p-5 mb-5 shadow-lg shadow-mtrred/5">
+        <div className="flex items-start justify-between gap-3 mb-5">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-mtrred font-semibold">Championship Command Center</div>
+            <div className="text-xl font-semibold mt-1">{activeCamp ? activeCamp.competition_name || activeCamp.title : "جاهز للبطولة القادمة"}</div>
+            <div className="text-xs text-neutral-400 mt-1">قرارك العملي الآن: <span className="text-neutral-100 font-medium">{playerDecision}</span></div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-2xl font-bold text-mtrgold">{daysToCompetition == null ? "—" : daysToCompetition < 0 ? "انتهت" : daysToCompetition === 0 ? "اليوم" : daysToCompetition}</div>
+            <div className="text-[10px] text-neutral-500">{daysToCompetition != null && daysToCompetition >= 0 ? "يوم للبطولة" : "موعد البطولة"}</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="bg-black/30 rounded-xl p-3"><div className="text-[10px] text-neutral-500">الجاهزية</div><div className="text-lg font-semibold mt-1">{readinessScore == null ? "سجّلها" : `${readinessScore}%`}</div><div className="text-[10px] text-neutral-600 mt-1">{todayReadinessDone ? "تم تسجيل اليوم" : "مطلوب قبل التمرين"}</div></div>
+          <div className="bg-black/30 rounded-xl p-3"><div className="text-[10px] text-neutral-500">الوزن</div><div className="text-lg font-semibold mt-1">{player.weight_kg || "—"} <span className="text-xs font-normal">كجم</span></div><div className={`text-[10px] mt-1 ${weightDelta != null && weightDelta > 0 ? "text-mtrred" : "text-teal-400"}`}>{targetWeight == null ? "لا يوجد هدف وزن" : `${weightDelta > 0 ? "فوق الهدف بـ" : "الفرق عن الهدف"} ${Math.abs(weightDelta).toFixed(1)} كجم`}</div></div>
+          <div className="bg-black/30 rounded-xl p-3"><div className="text-[10px] text-neutral-500">مهام المعسكر</div><div className="text-lg font-semibold mt-1">{openCampTasks.length}</div><div className="text-[10px] text-neutral-600 mt-1">{dueTodayTasks.length ? `${dueTodayTasks.length} مستحقة اليوم` : "مفتوحة"}</div></div>
+          <div className="bg-black/30 rounded-xl p-3"><div className="text-[10px] text-neutral-500">الحضور</div><div className="text-lg font-semibold mt-1">{attendance.length}</div><div className="text-[10px] text-neutral-600 mt-1">آخر 10 تسجيلات</div></div>
+        </div>
+        {activeCamp?.competition_date && <div className="text-[11px] text-neutral-500 mt-4">موعد البطولة: {activeCamp.competition_date} · مرحلة المعسكر: {activeCamp.current_phase || "—"}</div>}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4 mb-5">
+        <div className="bg-neutral-950 border border-mtrgold/30 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold">مهمتك الآن</div><span className="text-[10px] text-mtrgold bg-mtrgold/10 rounded-full px-2 py-1">TODAY</span></div>
+          <div className="text-lg font-semibold mb-2">{playerDecision}</div>
+          <div className="text-xs text-neutral-500 leading-relaxed">نفّذ المهمة، علّمها كمكتملة، وسجّل جاهزيتك بعد الجلسة. المدرب هيشوف التقدم مباشرة.</div>
+        </div>
+        <div className="bg-neutral-950 border border-teal-700/40 rounded-xl p-5">
+          <div className="text-sm font-semibold mb-3">Check-in سريع</div>
+          <div className="grid grid-cols-3 gap-2 mb-3"><MiniMetric label="نوم" value={`${sleepQuality}/5`} /><MiniMetric label="طاقة" value={`${energy}/5`} /><MiniMetric label="ألم/إجهاد" value={`${soreness}/5`} /></div>
+          <button onClick={submitReadiness} disabled={readinessSaving} className="w-full bg-teal-700/80 hover:bg-teal-700 rounded-lg py-2.5 text-xs font-semibold">{readinessSaving ? "جاري التسجيل..." : todayReadinessDone ? "تحديث جاهزيتي اليوم" : "سجّل جاهزيتي اليوم"}</button>
+          {readinessMsg && <div className="text-[11px] text-teal-400 mt-2">{readinessMsg}</div>}
         </div>
       </div>
 
