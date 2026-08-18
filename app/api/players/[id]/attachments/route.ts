@@ -22,14 +22,26 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const { fileName, fileUrl, fileType, notes } = await req.json();
+  const { fileName, fileUrl, fileType, notes, skillCategoryId, roadmapItemId, caption, stage, capturedAt, visibility } = await req.json();
   if (!fileName || !fileUrl) {
     return NextResponse.json({ error: "fileName and fileUrl are required" }, { status: 400 });
   }
 
   const { data, error } = await supabase
     .from("player_attachments")
-    .insert({ player_id: params.id, file_name: fileName, file_url: fileUrl, file_type: fileType, notes })
+    .insert({
+      player_id: params.id,
+      file_name: fileName,
+      file_url: fileUrl,
+      file_type: fileType,
+      notes,
+      skill_category_id: skillCategoryId || null,
+      roadmap_item_id: roadmapItemId || null,
+      caption: caption || null,
+      stage: stage || null,
+      captured_at: capturedAt || null,
+      visibility: visibility || "COACH_AND_PLAYER",
+    })
     .select()
     .single();
 

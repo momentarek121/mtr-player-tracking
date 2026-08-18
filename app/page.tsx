@@ -328,7 +328,7 @@ export default function Page() {
     await loadPlayerData(selectedId);
   };
 
-  const uploadFile = async (file: File) => {
+  const uploadFile = async (file: File, metadata: { caption?: string; stage?: string; visibility?: string }) => {
     if (!selectedId) return;
     const path = `${selectedId}/${Date.now()}-${file.name}`;
     const { error: upErr } = await supabase.storage.from("player-attachments").upload(path, file);
@@ -337,7 +337,14 @@ export default function Page() {
     await fetch(`/api/players/${selectedId}/attachments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName: file.name, fileUrl: pub.publicUrl, fileType: file.type }),
+      body: JSON.stringify({
+        fileName: file.name,
+        fileUrl: pub.publicUrl,
+        fileType: file.type,
+        caption: metadata.caption,
+        stage: metadata.stage,
+        visibility: metadata.visibility,
+      }),
     });
     await loadPlayerData(selectedId);
   };
@@ -750,7 +757,16 @@ export default function Page() {
               ))}
             </div>
 
-            {tab === "overview" && <OverviewTab analytics={analytics} />}
+            {tab === "overview" && (
+              <OverviewTab
+                analytics={analytics}
+                roadmap={roadmap}
+                readiness={readiness}
+                goals={goals}
+                attachments={attachments}
+                onNavigate={(nextTab) => setTab(nextTab as any)}
+              />
+            )}
             {tab === "assess" && (
               <AssessTab
                 skillCategories={skillCategories.filter(
@@ -814,17 +830,61 @@ export default function Page() {
   );
 }
 
-function OverviewTab({ analytics }: { analytics: any }) {
+function OverviewTab({
+  analytics, roadmap, readiness, goals, attachments, onNavigate,
+}: {
+  analytics: any;
+  roadmap: any[];
+  readiness: any[];
+  goals: any[];
+  attachments: any[];
+  onNavigate: (tab: string) => void;
+}) {
   if (!analytics) return null;
   const trend = analytics.progressTrend || [];
+  const openRoadmap = roadmap.filter((item) => item.status !== "RESOLVED");
+  const openGoals = goals.filter((goal) => goal.status !== "DONE");
+  const latestReadiness = readiness[0];
+  const readinessValue = latestReadiness?.score ?? latestReadiness?.readiness_score ?? latestReadiness?.rating ?? "—";
+  const last30 = analytics.attendance?.last30Days?.rate ?? 0;
+  const last90 = analytics.attendance?.last90Days?.rate ?? 0;
+  const nextAction = openRoadmap[0]
+    ? { label: "ابدأ من نقطة التطوير الأعلى أولوية", detail: openRoadmap[0].title, tab: "roadmap" }
+    : trend.length < 2
+      ? { label: "سجّل تقييمًا جديدًا للاعب", detail: "بعد تقييمين أو أكثر سيظهر منحنى التطور", tab: "assess" }
+      : { label: "راجع الجاهزية والهدف الحالي", detail: "حافظ على متابعة اللاعب أسبوعيًا", tab: "readiness" };
 
   return (
     <div className="space-y-5">
+      <div className="bg-gradient-to-l from-[#35101A] via-neutral-950 to-neutral-950 border border-mtrred/40 rounded-xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div className="text-[11px] text-mtrred font-bold tracking-wide mb-1">NEXT BEST ACTION</div>
+          <div className="text-base font-bold text-white">{nextAction.label}</div>
+          <div className="text-xs text-neutral-400 mt-1">{nextAction.detail}</div>
+        </div>
+        <button onClick={() => onNavigate(nextAction.tab)} className="bg-mtrred hover:bg-red-700 transition rounded-lg px-4 py-2.5 text-xs font-semibold whitespace-nowrap">
+          فتح الإجراء
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetricCard label="نقاط تطوير مفتوحة" value={openRoadmap.length} tone={openRoadmap.length ? "red" : "green"} onClick={() => onNavigate("roadmap")} />
+        <MetricCard label="أهداف نشطة" value={openGoals.length} tone={openGoals.length ? "gold" : "green"} onClick={() => onNavigate("goals")} />
+        <MetricCard label="الجاهزية الأخيرة" value={readinessValue} tone="purple" onClick={() => onNavigate("readiness")} />
+        <MetricCard label="أدلة وصور وفيديو" value={attachments.length} tone="teal" onClick={() => onNavigate("files")} />
+      </div>
+
       <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
-        <div className="text-sm font-semibold text-neutral-300 mb-3">تطور المستوى عبر الوقت</div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-sm font-semibold text-neutral-300">تطور المستوى عبر الوقت</div>
+            <div className="text-[11px] text-neutral-500 mt-1">المحاور الأربعة مبنية على التقييمات المسجلة</div>
+          </div>
+          {trend.length < 2 && <button onClick={() => onNavigate("assess")} className="text-[11px] text-mtrred hover:text-red-300">إضافة تقييم</button>}
+        </div>
         {trend.length < 2 ? (
-          <div className="text-neutral-500 text-xs text-center py-10">
-            سجّل تقييمات في أكتر من تاريخ عشان يظهر منحنى التطور
+          <div className="border border-dashed border-neutral-800 rounded-lg text-neutral-500 text-xs text-center py-10">
+            سجّل تقييمات في أكثر من تاريخ عشان يظهر منحنى التطور
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
@@ -843,17 +903,35 @@ function OverviewTab({ analytics }: { analytics: any }) {
       </div>
 
       <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
-        <div className="text-sm font-semibold text-neutral-300 mb-3">الحضور</div>
-        <div className="flex gap-3 text-xs text-neutral-400">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2">
-            آخر 30 يوم: <b className="text-white">{analytics.attendance.last30Days.rate}%</b>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-sm font-semibold text-neutral-300">الحضور والالتزام</div>
+            <div className="text-[11px] text-neutral-500 mt-1">الحضور جزء من تفسير التطور وليس رقمًا منفصلًا</div>
           </div>
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2">
-            آخر 90 يوم: <b className="text-white">{analytics.attendance.last90Days.rate}%</b>
-          </div>
+          <button onClick={() => onNavigate("attendance")} className="text-[11px] text-neutral-400 hover:text-white">فتح السجل</button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-xs text-neutral-400">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-3">آخر 30 يوم <b className="text-white block text-lg mt-1">{last30}%</b></div>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-3">آخر 90 يوم <b className="text-white block text-lg mt-1">{last90}%</b></div>
         </div>
       </div>
     </div>
+  );
+}
+
+function MetricCard({ label, value, tone, onClick }: { label: string; value: string | number; tone: string; onClick: () => void }) {
+  const tones: Record<string, string> = {
+    red: "border-mtrred/40 text-mtrred",
+    gold: "border-mtrgold/40 text-mtrgold",
+    green: "border-emerald-700/40 text-emerald-400",
+    purple: "border-violet-700/40 text-violet-400",
+    teal: "border-teal-700/40 text-teal-400",
+  };
+  return (
+    <button onClick={onClick} className={`text-right bg-neutral-950 border rounded-xl p-3 hover:bg-neutral-900 transition ${tones[tone] || tones.red}`}>
+      <div className="text-[11px] text-neutral-500 mb-2">{label}</div>
+      <div className="text-2xl font-bold">{value}</div>
+    </button>
   );
 }
 
@@ -1356,23 +1434,44 @@ function NotesTab({ notes, onAdd }: { notes: any[]; onAdd: (content: string) => 
   );
 }
 
-function AttachmentsTab({ attachments, onUpload }: { attachments: any[]; onUpload: (f: File) => void }) {
+function AttachmentsTab({ attachments, onUpload }: { attachments: any[]; onUpload: (f: File, metadata: { caption?: string; stage?: string; visibility?: string }) => void }) {
   const [uploading, setUploading] = useState(false);
+  const [caption, setCaption] = useState("");
+  const [stage, setStage] = useState("TRAINING");
+  const [visibility, setVisibility] = useState("COACH_AND_PLAYER");
 
   const handleFile = async (file: File) => {
     setUploading(true);
-    await onUpload(file);
+    await onUpload(file, { caption: caption.trim(), stage, visibility });
+    setCaption("");
     setUploading(false);
   };
 
   return (
     <div className="space-y-5">
-      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
-        <div className="text-sm font-semibold text-neutral-300 mb-3">رفع ملف أو صورة</div>
-        <label className="flex items-center justify-center gap-2 border border-dashed border-neutral-700 rounded-lg py-6 text-sm text-neutral-400 cursor-pointer hover:border-neutral-500 transition">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-3">
+        <div>
+          <div className="text-sm font-semibold text-neutral-300">أضف دليلًا لتطور اللاعب</div>
+          <div className="text-[11px] text-neutral-500 mt-1">اربط الصورة أو الفيديو بمرحلة واضحة بدل تخزينه كملف منفصل.</div>
+        </div>
+        <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="وصف سريع (مثلاً: دفاع الـ takedown في السبارينج)" className="w-full bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-xs" />
+        <div className="grid grid-cols-2 gap-2">
+          <select value={stage} onChange={(e) => setStage(e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-xs">
+            <option value="TRAINING">تدريب</option>
+            <option value="SPARRING">Sparring</option>
+            <option value="COMPETITION">بطولة</option>
+            <option value="POST_REVIEW">مراجعة بعد البطولة</option>
+          </select>
+          <select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-xs">
+            <option value="COACH_AND_PLAYER">المدرب واللاعب</option>
+            <option value="COACH_ONLY">المدرب فقط</option>
+            <option value="COACH_PLAYER_GUARDIAN">المدرب واللاعب وولي الأمر</option>
+          </select>
+        </div>
+        <label className="flex items-center justify-center gap-2 border border-dashed border-neutral-700 rounded-lg py-6 text-sm text-neutral-400 cursor-pointer hover:border-mtrred transition">
           {uploading ? "جاري الرفع..." : "دوس هنا أو اسحب ملف (صور، فيديو، PDF)"}
           <input
-            type="file" className="hidden" disabled={uploading}
+            type="file" accept="image/*,video/*,.pdf" className="hidden" disabled={uploading}
             onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
           />
         </label>
@@ -1380,21 +1479,19 @@ function AttachmentsTab({ attachments, onUpload }: { attachments: any[]; onUploa
 
       <div className="grid grid-cols-2 gap-3">
         {attachments.length === 0 && (
-          <div className="col-span-2 text-neutral-500 text-xs text-center py-8">مفيش ملفات مرفوعة لسه.</div>
+          <div className="col-span-2 text-neutral-500 text-xs text-center py-8">مفيش أدلة مرفوعة لسه. ابدأ بأول فيديو مرتبط بمهارة.</div>
         )}
         {attachments.map((a) => (
-          <a
-            key={a.id} href={a.file_url} target="_blank" rel="noreferrer"
-            className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 hover:border-neutral-600 transition"
-          >
+          <a key={a.id} href={a.file_url} target="_blank" rel="noreferrer" className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 hover:border-neutral-600 transition">
             {a.file_type?.startsWith("image/") ? (
-              <img src={a.file_url} alt={a.file_name} className="w-full h-28 object-cover rounded-lg mb-2" />
+              <img src={a.file_url} alt={a.caption || a.file_name} className="w-full h-28 object-cover rounded-lg mb-2" />
+            ) : a.file_type?.startsWith("video/") ? (
+              <video src={a.file_url} controls className="w-full h-28 object-cover rounded-lg mb-2" />
             ) : (
-              <div className="w-full h-28 bg-neutral-900 rounded-lg mb-2 flex items-center justify-center text-neutral-500 text-xs">
-                ملف
-              </div>
+              <div className="w-full h-28 bg-neutral-900 rounded-lg mb-2 flex items-center justify-center text-neutral-500 text-xs">ملف</div>
             )}
-            <div className="text-xs text-neutral-300 truncate">{a.file_name}</div>
+            <div className="text-xs text-neutral-300 truncate">{a.caption || a.file_name}</div>
+            <div className="text-[10px] text-neutral-600 mt-1">{a.stage === "SPARRING" ? "Sparring" : a.stage === "COMPETITION" ? "بطولة" : a.stage === "POST_REVIEW" ? "مراجعة" : "تدريب"}</div>
           </a>
         ))}
       </div>
