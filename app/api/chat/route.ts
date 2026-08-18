@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase-admin";
 import { generateRoadmapForPlayer } from "@/lib/roadmap-engine";
+import { getAuthenticatedPerformanceCoach } from "@/lib/server-auth";
 
 const MODEL = "llama-3.3-70b-versatile";
 
@@ -314,8 +315,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "GROQ_API_KEY مش متضاف في إعدادات Vercel لسه." }, { status: 500 });
   }
 
-  const { playerId, messages, audience, coachId } = await req.json();
-  const canWrite = (audience === "coach" || audience === "performance") && !!playerId;
+  const { playerId, messages, audience, coachId: requestedCoachId } = await req.json();
+  let coachId = requestedCoachId;
+  if (audience === "performance") {
+    const authenticatedCoach = await getAuthenticatedPerformanceCoach(req);
+    if (!authenticatedCoach) return NextResponse.json({ error: "جلسة مدرب الأداء البدني غير صالحة" }, { status: 401 });
+    coachId = authenticatedCoach.id;
+  }
+  const canWrite = audience === "coach" && !!playerId;
   const ownerCanWrite = audience === "owner";
 
   let contextBlock = "";

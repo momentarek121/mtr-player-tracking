@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useCoachAuth } from "@/lib/useCoachAuth";
+import { supabase } from "@/lib/supabase";
 
 const BELT_LABELS: Record<string, string> = { WHITE: "أبيض", BLUE: "أزرق", PURPLE: "بنفسجي", BROWN: "بني", BLACK: "أسود" };
 const CATEGORY_LABELS: Record<string, string> = { STRENGTH: "قوة", CONDITIONING: "لياقة", MOBILITY: "مرونة", RECOVERY: "استشفاء", TEST: "اختبار" };
@@ -38,10 +39,15 @@ export default function PerformancePage() {
   const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([]);
   const [chatSending, setChatSending] = useState(false);
 
+  const apiFetch = async (url: string, init: RequestInit = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return fetch(url, { ...init, headers: { ...(init.headers || {}), ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) } });
+  };
+
   const load = async () => {
     if (!coach?.id) return;
     setLoading(true);
-    const res = await fetch(`/api/performance/workspace?coachId=${coach.id}`);
+    const res = await apiFetch(`/api/performance/workspace`);
     const data = await res.json();
     setAssignments(data.assignments || []);
     setPlayers((data.assignments || []).map((a: any) => a.players).filter(Boolean));
@@ -72,25 +78,25 @@ export default function PerformancePage() {
   const assignPlayer = async (playerId: string) => {
     if (!coach?.id || !playerId) return;
     setSaving(true);
-    await fetch("/api/performance/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "assignment", coachId: coach.id, playerId, assignedBy: coach.id }) });
+    await apiFetch("/api/performance/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "assignment", coachId: coach.id, playerId, assignedBy: coach.id }) });
     setShowAssign(false); setSaving(false); await load(); setSelectedPlayerId(playerId);
   };
   const removePlayer = async () => {
     if (!coach?.id || !selectedPlayerId) return;
     setSaving(true);
-    await fetch(`/api/performance/workspace?coachId=${coach.id}&playerId=${selectedPlayerId}`, { method: "DELETE" });
+    await apiFetch(`/api/performance/workspace?playerId=${selectedPlayerId}`, { method: "DELETE" });
     setSelectedPlayerId(""); setSaving(false); await load();
   };
   const createProgram = async () => {
     if (!coach?.id || !selectedPlayer?.id || !programTitle.trim()) return;
     setSaving(true);
-    await fetch("/api/performance/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coachId: coach.id, playerId: selectedPlayer.id, title: programTitle.trim(), goal: programGoal.trim() }) });
+    await apiFetch("/api/performance/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coachId: coach.id, playerId: selectedPlayer.id, title: programTitle.trim(), goal: programGoal.trim() }) });
     setProgramTitle(""); setProgramGoal(""); setSaving(false); await load();
   };
   const addExercise = async () => {
     if (!activeProgram?.id || !exerciseName.trim()) return;
     setSaving(true);
-    await fetch("/api/performance/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "item", coachId: coach?.id, programId: activeProgram.id, exerciseName: exerciseName.trim(), category: exerciseCategory, sets: exerciseSets, reps: exerciseReps, load: exerciseLoad }) });
+    await apiFetch("/api/performance/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "item", coachId: coach?.id, programId: activeProgram.id, exerciseName: exerciseName.trim(), category: exerciseCategory, sets: exerciseSets, reps: exerciseReps, load: exerciseLoad }) });
     setExerciseName(""); setExerciseSets(""); setExerciseReps(""); setExerciseLoad(""); setSaving(false); await load();
   };
   const sendChat = async () => {
@@ -98,18 +104,18 @@ export default function PerformancePage() {
     const userMessage = { role: "user", content: chatInput.trim() };
     const next = [...chatMessages, userMessage];
     setChatMessages(next); setChatInput(""); setChatSending(true);
-    const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audience: "performance", coachId: coach?.id, messages: next }) });
+    const res = await apiFetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audience: "performance", coachId: coach?.id, messages: next }) });
     const data = await res.json();
     setChatMessages((prev) => [...prev, { role: "assistant", content: data.reply || data.error || "حصل خطأ" }]);
     setChatSending(false);
   };
   const linkMedia = async (itemId: string) => {
     if (!coach?.id || !selectedAttachmentId) return;
-    await fetch("/api/performance/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "media", coachId: coach.id, itemId, attachmentId: selectedAttachmentId, timestampSec: mediaTimestamp ? Number(mediaTimestamp) : null, note: mediaNote || null }) });
+    await apiFetch("/api/performance/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "media", coachId: coach.id, itemId, attachmentId: selectedAttachmentId, timestampSec: mediaTimestamp ? Number(mediaTimestamp) : null, note: mediaNote || null }) });
     setMediaNote(""); setMediaTimestamp(""); await load();
   };
   const toggleItem = async (item: any) => {
-    await fetch("/api/performance/workspace", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "item", coachId: coach?.id, itemId: item.id, completed: !item.completed }) });
+    await apiFetch("/api/performance/workspace", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "item", coachId: coach?.id, itemId: item.id, completed: !item.completed }) });
     await load();
   };
 
