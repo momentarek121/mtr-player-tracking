@@ -55,6 +55,11 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const [rollReceived, setRollReceived] = useState("0");
   const [rollSaving, setRollSaving] = useState(false);
   const [rollMsg, setRollMsg] = useState("");
+  const [matchOpponent, setMatchOpponent] = useState("");
+  const [matchResult, setMatchResult] = useState("WIN");
+  const [matchNotes, setMatchNotes] = useState("");
+  const [matchSaving, setMatchSaving] = useState(false);
+  const [matchMsg, setMatchMsg] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackImageFile, setFeedbackImageFile] = useState<File | null>(null);
@@ -161,6 +166,26 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       setRollMsg("✓ اترجل الرول");
       setTimeout(() => setRollMsg(""), 3000);
     }
+  };
+
+  const submitMatchResult = async () => {
+    if (!activeCamp) return;
+    setMatchSaving(true);
+    const { error } = await supabase.from("competition_results").insert({
+      player_id: playerId,
+      competition_name: activeCamp.competition_name || activeCamp.title,
+      date: todayIso,
+      sport: player.sport,
+      weight_class: activeCamp.weight_class || (activeCamp.target_weight_kg ? `${activeCamp.target_weight_kg} كجم` : null),
+      opponent_name: matchOpponent.trim() || null,
+      result: matchResult,
+      notes: matchNotes.trim() || null,
+    });
+    setMatchSaving(false);
+    if (error) { setMatchMsg("حصل خطأ في تسجيل النتيجة"); return; }
+    setMatchOpponent(""); setMatchNotes("");
+    setMatchMsg("✓ اتسجلت نتيجة النزال");
+    setTimeout(() => setMatchMsg(""), 3000);
   };
 
   const WEEKDAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -361,6 +386,30 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
           {readinessMsg && <div className="text-[11px] text-teal-400 mt-2">{readinessMsg}</div>}
         </div>
       </div>
+
+      {activeCamp && (daysToCompetition != null && daysToCompetition <= 7) && (
+        <div className="bg-neutral-950 border border-mtrred/50 rounded-2xl p-5 mb-5">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div><div className="text-[11px] uppercase tracking-wider text-mtrred font-semibold">Match Day Mode</div><div className="text-lg font-semibold mt-1">يوم المباراة / النزال</div></div>
+            <div className="text-xs text-mtrgold bg-mtrgold/10 rounded-full px-2.5 py-1">{daysToCompetition === 0 ? "اليوم" : `${daysToCompetition} أيام`}</div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-2 mb-4">
+            <div className="bg-neutral-900 rounded-lg p-3"><div className="text-[10px] text-neutral-500">قبل النزال</div><div className="text-xs mt-1">وزّن نفسك، اشرب حسب خطة المدرب، وسجّل جاهزيتك.</div></div>
+            <div className="bg-neutral-900 rounded-lg p-3"><div className="text-[10px] text-neutral-500">داخل النزال</div><div className="text-xs mt-1">التزم بأولوياتك: الوضعية، التنفس، والـ game plan.</div></div>
+            <div className="bg-neutral-900 rounded-lg p-3"><div className="text-[10px] text-neutral-500">بعد النزال</div><div className="text-xs mt-1">استشفِ، اكتب ما حدث، وسجّل النتيجة للمدرب.</div></div>
+          </div>
+          <div className="border-t border-neutral-800 pt-4">
+            <div className="text-sm font-semibold mb-3">تسجيل نتيجة النزال</div>
+            <div className="grid md:grid-cols-3 gap-2 mb-2">
+              <input value={matchOpponent} onChange={(e) => setMatchOpponent(e.target.value)} placeholder="اسم المنافس" className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs outline-none focus:border-mtrred" />
+              <select value={matchResult} onChange={(e) => setMatchResult(e.target.value)} className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs outline-none"><option value="WIN">فوز</option><option value="LOSS">خسارة</option><option value="DRAW">تعادل</option><option value="DNC">لم يلعب</option></select>
+              <input value={matchNotes} onChange={(e) => setMatchNotes(e.target.value)} placeholder="ملاحظة سريعة" className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs outline-none focus:border-mtrred" />
+            </div>
+            <button onClick={submitMatchResult} disabled={matchSaving} className="w-full bg-mtrred hover:bg-red-700 rounded-lg py-2.5 text-xs font-semibold">{matchSaving ? "جاري التسجيل..." : "سجّل النتيجة"}</button>
+            {matchMsg && <div className="text-[11px] text-teal-400 mt-2">{matchMsg}</div>}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-5">
         <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
