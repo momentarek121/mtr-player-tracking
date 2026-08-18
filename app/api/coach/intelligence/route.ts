@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
   let notificationsQuery = supabase.from("coach_notifications").select("id, player_id, insight_id, notification_type, title, body, severity, metadata, read_at, created_at, players(name, player_code)").order("created_at", { ascending: false }).limit(100);
   if (playerId) notificationsQuery = notificationsQuery.eq("player_id", playerId);
   if (unreadOnly) notificationsQuery = notificationsQuery.is("read_at", null);
-  const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const nowMs = Date.now();
+  const weekStart = new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const previousWeekStart = new Date(nowMs - 14 * 24 * 60 * 60 * 1000).toISOString();
   const [{ data: notifications, error: notificationsError }, reportsResult, weeklyData, playerProgressData] = await Promise.all([
     notificationsQuery,
     playerId
@@ -28,10 +30,10 @@ export async function GET(req: NextRequest) {
       : Promise.resolve(null),
     playerId
       ? Promise.all([
-          supabase.from("player_exercises").select("title, completed, completed_at, assigned_at").eq("player_id", playerId).order("assigned_at", { ascending: false }).limit(100),
-          supabase.from("player_attendance").select("date, notes").eq("player_id", playerId).order("date", { ascending: false }).limit(100),
-          supabase.from("player_weight_log").select("weight_kg, date, notes").eq("player_id", playerId).order("date", { ascending: false }).limit(100),
-          supabase.from("player_chat_insights").select("category, urgency, summary, mindset_signal, recommended_action, created_at").eq("player_id", playerId).order("created_at", { ascending: false }).limit(50),
+          supabase.from("player_exercises").select("title, completed, completed_at, assigned_at").eq("player_id", playerId).gte("assigned_at", previousWeekStart).order("assigned_at", { ascending: false }).limit(100),
+          supabase.from("player_attendance").select("date, notes").eq("player_id", playerId).gte("date", previousWeekStart.slice(0, 10)).order("date", { ascending: false }).limit(100),
+          supabase.from("player_weight_log").select("weight_kg, date, notes").eq("player_id", playerId).gte("date", previousWeekStart.slice(0, 10)).order("date", { ascending: false }).limit(100),
+          supabase.from("player_chat_insights").select("category, urgency, summary, mindset_signal, recommended_action, created_at").eq("player_id", playerId).gte("created_at", previousWeekStart).order("created_at", { ascending: false }).limit(50),
         ])
       : Promise.resolve(null),
   ]);
@@ -64,17 +66,29 @@ export async function GET(req: NextRequest) {
     const att = attendanceResult.data || [];
     const weights = weightResult.data || [];
     const insights = insightResult.data || [];
-    const completed = ex.filter((x: any) => x.completed).length;
-    const adherence = ex.length ? Math.round((completed / ex.length) * 100) : null;
+    const currentExercises = ex.filter((x: any) => String(x.assigned_at) >= weekStart);
+    const previousExercises = ex.filter((x: any) => String(x.assigned_at) < weekStart);
+    const currentAttendance = att.filter((x: any) => String(x.date) >= weekStart.slice(0, 10));
+    const previousAttendance = att.filter((x: any) => String(x.date) < weekStart.slice(0, 10));
+    const currentInsights = insights.filter((x: any) => String(x.created_at) >= weekStart);
+    const previousInsights = insights.filter((x: any) => String(x.created_at) < weekStart);
+    const completed = currentExercises.filter((x: any) => x.completed).length;
+    const adherence = currentExercises.length ? Math.round((completed / currentExercises.length) * 100) : null;
+    const previousCompleted = previousExercises.filter((x: any) => x.completed).length;
+    const previousAdherence = previousExercises.length ? Math.round((previousCompleted / previousExercises.length) * 100) : null;
     const sortedWeights = [...weights].sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
-    const weightStartKg = sortedWeights[0]?.weight_kg ?? null;
-    const weightEndKg = sortedWeights[sortedWeights.length - 1]?.weight_kg ?? null;
+    const currentWeights = sortedWeights.filter((x: any) => String(x.date) >= weekStart.slice(0, 10));
+    const previousWeights = sortedWeights.filter((x: any) => String(x.date) < weekStart.slice(0, 10));
+    const weightStartKg = currentWeights[0]?.weight_kg ?? null;
+    const weightEndKg = currentWeights[currentWeights.length - 1]?.weight_kg ?? null;
+    const previousWeightStartKg = previousWeights[0]?.weight_kg ?? null;
+    const previousWeightEndKg = previousWeights[previousWeights.length - 1]?.weight_kg ?? null;
     const counts: Record<string, number> = {};
-    insights.forEach((x: any) => { counts[x.category] = (counts[x.category] || 0) + 1; });
+    currentInsights.forEach((x: any) => { counts[x.category] = (counts[x.category] || 0) + 1; });
     const topSignal = Object.entries(counts).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || "OTHER";
     const blocker = adherence !== null && adherence < 50 ? "الالتزام بالتمارين منخفض ويحتاج تدخلًا مباشرًا." : insights.some((x: any) => x.urgency === "HIGH") ? "هناك إشارة عالية الأولوية تحتاج متابعة قبل زيادة الحمل." : "لا يوجد تعثر واضح من البيانات الحالية.";
     const recommendation = insights.some((x: any) => x.category === "WEIGHT_NUTRITION") ? "راجع خطة الوزن والتغذية مع اللاعب واربطها بموعد البطولة والوزن المستهدف." : adherence !== null && adherence < 70 ? "قلل حجم الخطة إلى خطوات قابلة للإنجاز وحدد متابعة قصيرة خلال 48 ساعة." : "حافظ على الحمل الحالي وأضف تقييمًا فنيًا أو بدنيًا جديدًا في نهاية الأسبوع.";
-    progress = { periodStart: weekStart, generatedAt: new Date().toISOString(), exerciseCount: ex.length, completedExercises: completed, adherencePercent: adherence, attendanceCount: att.length, weightStartKg, weightEndKg, weightDeltaKg: weightStartKg !== null && weightEndKg !== null ? Number((weightEndKg - weightStartKg).toFixed(1)) : null, signalCounts: counts, topSignal, blocker, recommendation, recentExercises: ex.slice(0, 10), recentAttendance: att.slice(0, 10), recentWeights: sortedWeights.slice(-10).reverse(), recentInsights: insights.slice(0, 12) };
+    progress = { periodStart: weekStart, previousPeriodStart: previousWeekStart, generatedAt: new Date().toISOString(), exerciseCount: currentExercises.length, completedExercises: completed, adherencePercent: adherence, attendanceCount: currentAttendance.length, weightStartKg, weightEndKg, weightDeltaKg: weightStartKg !== null && weightEndKg !== null ? Number((weightEndKg - weightStartKg).toFixed(1)) : null, signalCounts: counts, topSignal, blocker, recommendation, recentExercises: currentExercises.slice(0, 10), recentAttendance: currentAttendance.slice(0, 10), recentWeights: currentWeights.slice(-10).reverse(), recentInsights: currentInsights.slice(0, 12), comparison: { previousExerciseCount: previousExercises.length, previousCompletedExercises: previousCompleted, previousAdherencePercent: previousAdherence, adherenceDelta: adherence !== null && previousAdherence !== null ? adherence - previousAdherence : null, previousAttendanceCount: previousAttendance.length, attendanceDelta: currentAttendance.length - previousAttendance.length, previousWeightStartKg, previousWeightEndKg, previousWeightDeltaKg: previousWeightStartKg !== null && previousWeightEndKg !== null ? Number((previousWeightEndKg - previousWeightStartKg).toFixed(1)) : null, currentInsightCount: currentInsights.length, previousInsightCount: previousInsights.length, insightDelta: currentInsights.length - previousInsights.length } };
   }
   return NextResponse.json({ notifications: notifications || [], report: reportsResult.data || null, progress, unreadCount: (notifications || []).filter((n: any) => !n.read_at).length, weeklySummaries });
 }
