@@ -42,6 +42,8 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const [soreness, setSoreness] = useState(3);
   const [readinessSaving, setReadinessSaving] = useState(false);
   const [readinessMsg, setReadinessMsg] = useState("");
+  const [fightCamps, setFightCamps] = useState<any[]>([]);
+  const [fightCampTasks, setFightCampTasks] = useState<any[]>([]);
   const [rollPartner, setRollPartner] = useState("");
   const [rollLanded, setRollLanded] = useState("0");
   const [rollReceived, setRollReceived] = useState("0");
@@ -86,6 +88,23 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       setLoading(false);
     })();
   }, [playerId]);
+
+  useEffect(() => {
+    (async () => {
+      const { data: camps } = await supabase.from("fight_camps").select("*").eq("player_id", playerId).eq("status", "ACTIVE").order("competition_date", { ascending: true });
+      setFightCamps(camps || []);
+      const ids = (camps || []).map((c: any) => c.id);
+      if (ids.length) {
+        const { data: tasks } = await supabase.from("fight_camp_tasks").select("*").in("camp_id", ids).order("due_date", { ascending: true, nullsFirst: false });
+        setFightCampTasks(tasks || []);
+      }
+    })();
+  }, [playerId]);
+
+  const toggleCampTask = async (id: string, completed: boolean) => {
+    await supabase.from("fight_camp_tasks").update({ completed, completed_at: completed ? new Date().toISOString() : null }).eq("id", id);
+    setFightCampTasks((prev) => prev.map((task) => task.id === id ? { ...task, completed, completed_at: completed ? new Date().toISOString() : null } : task));
+  };
 
   const toggleExercise = async (id: string, completed: boolean) => {
     await supabase.from("player_exercises").update({ completed, completed_at: completed ? new Date().toISOString() : null }).eq("id", id);
@@ -323,6 +342,45 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
             </div>
           )}
         </div>
+
+        {fightCamps.length > 0 && (
+          <div className="bg-neutral-950 border border-mtrred/30 rounded-xl p-5">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <div className="text-sm font-semibold text-neutral-200">معسكر البطولة</div>
+                <div className="text-[11px] text-neutral-500 mt-1">نفّذ المهام وسجّل الجاهزية عشان المدرب يشوف تقدمك يومًا بيوم.</div>
+              </div>
+              <div className="text-[10px] bg-mtrred/15 text-mtrred rounded-full px-2.5 py-1">ACTIVE</div>
+            </div>
+            {fightCamps.map((camp: any) => {
+              const campTasks = fightCampTasks.filter((task: any) => task.camp_id === camp.id);
+              const completed = campTasks.filter((task: any) => task.completed).length;
+              const phaseLabels: Record<string, string> = { BUILD: "بناء", INTENSIFY: "تكثيف", TAPER: "تخفيف الحمل", FIGHT_WEEK: "أسبوع البطولة", RECOVERY: "استشفاء" };
+              return (
+                <div key={camp.id}>
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <div className="bg-neutral-900 rounded-lg p-3"><div className="text-[10px] text-neutral-500">المعسكر</div><div className="text-sm mt-1">{camp.title}</div></div>
+                    <div className="bg-neutral-900 rounded-lg p-3"><div className="text-[10px] text-neutral-500">المرحلة</div><div className="text-sm mt-1 text-mtrgold">{phaseLabels[camp.current_phase] || camp.current_phase}</div></div>
+                    <div className="bg-neutral-900 rounded-lg p-3"><div className="text-[10px] text-neutral-500">البطولة</div><div className="text-sm mt-1">{camp.competition_name || "لم تحدد"}</div></div>
+                    <div className="bg-neutral-900 rounded-lg p-3"><div className="text-[10px] text-neutral-500">التقدم</div><div className="text-sm mt-1">{completed}/{campTasks.length} مهام</div></div>
+                  </div>
+                  {campTasks.length === 0 ? (
+                    <div className="text-xs text-neutral-500 text-center py-4">لم يضف المدرب مهام المعسكر بعد.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {campTasks.map((task: any) => (
+                        <label key={task.id} className="flex items-start gap-3 bg-neutral-900 border border-neutral-800 rounded-lg px-3.5 py-3 cursor-pointer">
+                          <input type="checkbox" checked={task.completed} onChange={(e) => toggleCampTask(task.id, e.target.checked)} className="mt-0.5 accent-mtrred w-4 h-4" />
+                          <div className="min-w-0"><div className={`text-sm ${task.completed ? "text-neutral-500 line-through" : "text-neutral-200"}`}>{task.title}</div>{task.description && <div className="text-xs text-neutral-500 mt-1">{task.description}</div>}<div className="text-[10px] text-neutral-600 mt-1">{task.category}{task.due_date ? ` · قبل ${task.due_date}` : ""}</div></div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5">
           <div className="text-sm font-semibold text-neutral-300 mb-3">تمارينك المكلّف بيها</div>

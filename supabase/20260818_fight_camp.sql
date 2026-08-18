@@ -1,0 +1,36 @@
+create table if not exists public.fight_camps (
+  id uuid primary key default gen_random_uuid(),
+  player_id uuid not null references public.players(id) on delete cascade,
+  title text not null,
+  competition_name text,
+  competition_date date,
+  target_weight_kg numeric,
+  current_phase text not null default 'BUILD',
+  status text not null default 'ACTIVE',
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint fight_camps_phase_check check (current_phase in ('BUILD','INTENSIFY','TAPER','FIGHT_WEEK','RECOVERY')),
+  constraint fight_camps_status_check check (status in ('ACTIVE','COMPLETED','PAUSED'))
+);
+
+create table if not exists public.fight_camp_tasks (
+  id uuid primary key default gen_random_uuid(),
+  camp_id uuid not null references public.fight_camps(id) on delete cascade,
+  title text not null,
+  description text,
+  category text not null default 'TRAINING',
+  due_date date,
+  completed boolean not null default false,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  constraint fight_camp_tasks_category_check check (category in ('TRAINING','SPARRING','STRENGTH','NUTRITION','WEIGHT','RECOVERY','VIDEO_REVIEW'))
+);
+
+create index if not exists idx_fight_camps_player_status on public.fight_camps(player_id, status, competition_date);
+create index if not exists idx_fight_camp_tasks_camp_due on public.fight_camp_tasks(camp_id, due_date, completed);
+
+alter table public.fight_camps enable row level security;
+alter table public.fight_camp_tasks enable row level security;
+create policy "allow all - fight camps" on public.fight_camps for all using (true) with check (true);
+create policy "allow all - fight camp tasks" on public.fight_camp_tasks for all using (true) with check (true);
