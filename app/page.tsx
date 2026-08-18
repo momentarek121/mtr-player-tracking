@@ -47,6 +47,7 @@ export default function Page() {
   const [fightCampTasks, setFightCampTasks] = useState<any[]>([]);
   const [intelligenceNotifications, setIntelligenceNotifications] = useState<any[]>([]);
   const [developmentReport, setDevelopmentReport] = useState<any | null>(null);
+  const [progressReport, setProgressReport] = useState<any | null>(null);
   const [allNotifications, setAllNotifications] = useState<any[]>([]);
   const [globalUnreadCount, setGlobalUnreadCount] = useState(0);
   const [weeklySummaries, setWeeklySummaries] = useState<any[]>([]);
@@ -99,6 +100,7 @@ export default function Page() {
     const json = await res.json();
     setIntelligenceNotifications(json.notifications || []);
     setDevelopmentReport(json.report || null);
+    setProgressReport(json.progress || null);
   };
 
   const acknowledgeIntelligence = async (notification: any) => {
@@ -838,7 +840,7 @@ export default function Page() {
               <GoalsTab goals={goals} onAdd={addGoal} onToggle={toggleGoal} onEditDate={editGoalDate} onDelete={deleteGoal} />
             )}
             {tab === "review" && <ReviewPlansTab goals={goals} meals={meals} exercises={exercises} onReview={reviewPlanItem} />}
-            {tab === "intelligence" && <PlayerIntelligenceTab report={developmentReport} notifications={intelligenceNotifications} onAcknowledge={acknowledgeIntelligence} />}
+            {tab === "intelligence" && <PlayerIntelligenceTab report={developmentReport} progress={progressReport} notifications={intelligenceNotifications} onAcknowledge={acknowledgeIntelligence} />}
             {tab === "playerchat" && <PlayerChatLogTab logs={playerChatLogs} />}
             {tab === "weight" && <WeightTab log={weightLog} onAdd={addWeightEntry} onDelete={deleteWeightEntry} />}
             {tab === "rolls" && <RollsTab rolls={rolls} onAdd={addRoll} onDelete={deleteRoll} />}
@@ -1265,7 +1267,7 @@ function CoachInboxPanel({ notifications, unreadCount, weeklySummaries, onOpenPl
   );
 }
 
-function PlayerIntelligenceTab({ report, notifications, onAcknowledge }: { report: any | null; notifications: any[]; onAcknowledge: (notification: any) => void }) {
+function PlayerIntelligenceTab({ report, progress, notifications, onAcknowledge }: { report: any | null; progress: any | null; notifications: any[]; onAcknowledge: (notification: any) => void }) {
   const json = report?.report_json || {};
   const categoryLabels: Record<string, string> = { INJURY: "إصابة/ألم", WEIGHT_NUTRITION: "وزن وتغذية", COMPETITION: "بطولات", MENTAL_MOTIVATION: "ذهني ودافعية", PHYSICAL: "بدني", TECHNICAL: "فني", OTHER: "عام" };
   const counts = Object.entries(json.categoryCounts || {}).sort((a: any, b: any) => b[1] - a[1]);
@@ -1275,6 +1277,8 @@ function PlayerIntelligenceTab({ report, notifications, onAcknowledge }: { repor
         <div className="flex items-start justify-between gap-3 mb-3"><div><div className="text-sm font-semibold text-neutral-200">تصور تفكير اللاعب</div><div className="text-[11px] text-neutral-500 mt-1">يتحدث تلقائيًا من رسائل الشات، وليس تشخيصًا نفسيًا أو طبيًا.</div></div><div className="text-[10px] text-violet-300 bg-violet-400/10 rounded-full px-2.5 py-1">LIVE REPORT</div></div>
         {report ? <><div className="text-sm text-neutral-300 leading-relaxed mb-4">{report.summary}</div><div className="flex flex-wrap gap-2">{counts.map(([key, value]) => <span key={key} className="text-[11px] bg-neutral-900 border border-neutral-800 rounded-full px-2.5 py-1">{categoryLabels[key] || key}: {String(value)}</span>)}</div></> : <div className="text-xs text-neutral-500 py-5 text-center">لسه مفيش تقرير. أول رسالة من اللاعب هتبدأ بناء الصورة.</div>}
       </div>
+
+      {progress && <div className="bg-neutral-950 border border-teal-700/40 rounded-xl p-5"><div className="flex items-start justify-between gap-3 mb-4"><div><div className="text-sm font-semibold text-neutral-200">تقرير التنفيذ الفعلي — آخر 7 أيام</div><div className="text-[11px] text-neutral-500 mt-1">مقارنة بين الخطة وما تم تنفيذه فعلًا</div></div><div className="text-[10px] text-teal-300 bg-teal-400/10 rounded-full px-2.5 py-1">UPDATED</div></div><div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4"><div className="bg-neutral-900 rounded-lg p-3"><div className="text-[11px] text-neutral-500">الالتزام</div><div className="text-lg font-semibold text-teal-300">{progress.adherencePercent === null ? "—" : `${progress.adherencePercent}%`}</div></div><div className="bg-neutral-900 rounded-lg p-3"><div className="text-[11px] text-neutral-500">التمارين</div><div className="text-lg font-semibold">{progress.completedExercises}/{progress.exerciseCount}</div></div><div className="bg-neutral-900 rounded-lg p-3"><div className="text-[11px] text-neutral-500">الحضور</div><div className="text-lg font-semibold">{progress.attendanceCount}</div></div><div className="bg-neutral-900 rounded-lg p-3"><div className="text-[11px] text-neutral-500">تغير الوزن</div><div className="text-lg font-semibold">{progress.weightDeltaKg === null ? "—" : `${progress.weightDeltaKg > 0 ? "+" : ""}${progress.weightDeltaKg} كجم`}</div></div></div><div className="grid md:grid-cols-2 gap-3"><div className="bg-orange-400/5 border border-orange-700/30 rounded-lg p-3"><div className="text-[11px] text-orange-300 mb-1">التعثر المحتمل</div><div className="text-xs text-neutral-300 leading-relaxed">{progress.blocker}</div></div><div className="bg-violet-400/5 border border-violet-700/30 rounded-lg p-3"><div className="text-[11px] text-violet-300 mb-1">توصية الأسبوع القادم</div><div className="text-xs text-neutral-300 leading-relaxed">{progress.recommendation}</div></div></div></div>}
 
       <div className="bg-neutral-950 border border-mtrred/40 rounded-xl p-5">
         <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold text-neutral-200">تنبيهات وإشارات من الشات</div><span className="text-[10px] text-mtrred bg-mtrred/10 rounded-full px-2 py-1">{notifications.filter((n) => !n.read_at).length} غير مقروء</span></div>
