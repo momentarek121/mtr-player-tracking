@@ -44,6 +44,8 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
   const [readinessMsg, setReadinessMsg] = useState("");
   const [fightCamps, setFightCamps] = useState<any[]>([]);
   const [fightCampTasks, setFightCampTasks] = useState<any[]>([]);
+  const [performancePrograms, setPerformancePrograms] = useState<any[]>([]);
+  const [performanceItems, setPerformanceItems] = useState<any[]>([]);
   const [rollPartner, setRollPartner] = useState("");
   const [rollLanded, setRollLanded] = useState("0");
   const [rollReceived, setRollReceived] = useState("0");
@@ -100,6 +102,23 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
       }
     })();
   }, [playerId]);
+
+  useEffect(() => {
+    (async () => {
+      const { data: programs } = await supabase.from("performance_programs").select("*").eq("player_id", playerId).eq("status", "ACTIVE").order("start_date", { ascending: false, nullsFirst: false });
+      setPerformancePrograms(programs || []);
+      const ids = (programs || []).map((p: any) => p.id);
+      if (ids.length) {
+        const { data: items } = await supabase.from("performance_program_items").select("*").in("program_id", ids).order("created_at");
+        setPerformanceItems(items || []);
+      }
+    })();
+  }, [playerId]);
+
+  const togglePerformanceItem = async (id: string, completed: boolean) => {
+    await supabase.from("performance_program_items").update({ completed, completed_at: completed ? new Date().toISOString() : null }).eq("id", id);
+    setPerformanceItems((prev) => prev.map((item) => item.id === id ? { ...item, completed } : item));
+  };
 
   const toggleCampTask = async (id: string, completed: boolean) => {
     await supabase.from("fight_camp_tasks").update({ completed, completed_at: completed ? new Date().toISOString() : null }).eq("id", id);
@@ -342,6 +361,16 @@ export default function PlayerSelfView({ params }: { params: { id: string } }) {
             </div>
           )}
         </div>
+
+        {performancePrograms.length > 0 && (
+          <div className="bg-neutral-950 border border-teal-700/40 rounded-xl p-5">
+            <div className="flex items-start justify-between gap-3 mb-4"><div><div className="text-sm font-semibold text-neutral-200">برنامج الأداء البدني</div><div className="text-[11px] text-neutral-500 mt-1">الخطة المخصصة لك من مدرب الأداء البدني.</div></div><div className="text-[10px] text-teal-400 bg-teal-400/10 rounded-full px-2.5 py-1">Performance</div></div>
+            {performancePrograms.map((program: any) => {
+              const programItems = performanceItems.filter((item: any) => item.program_id === program.id);
+              return <div key={program.id} className="mb-4 last:mb-0"><div className="bg-neutral-900 rounded-lg p-3 mb-2"><div className="text-sm font-semibold">{program.title}</div>{program.goal && <div className="text-xs text-neutral-500 mt-1">الهدف: {program.goal}</div>}</div><div className="space-y-2">{programItems.map((item: any) => <label key={item.id} className="flex items-start gap-3 bg-neutral-900 border border-neutral-800 rounded-lg px-3.5 py-3 cursor-pointer"><input type="checkbox" checked={item.completed} onChange={(e) => togglePerformanceItem(item.id, e.target.checked)} className="mt-0.5 accent-mtrred w-4 h-4" /><div className="min-w-0"><div className={`text-sm ${item.completed ? "text-neutral-500 line-through" : "text-neutral-200"}`}>{item.exercise_name}</div><div className="text-[10px] text-neutral-600 mt-1">{item.category}{item.sets ? ` · ${item.sets} sets` : ""}{item.reps ? ` · ${item.reps} reps` : ""}{item.load ? ` · ${item.load}` : ""}</div>{item.instructions && <div className="text-xs text-neutral-500 mt-1">{item.instructions}</div>}</div></label>)}{programItems.length === 0 && <div className="text-xs text-neutral-500 text-center py-3">المدرب لم يضف تمارين للبرنامج بعد.</div>}</div></div>;
+            })}
+          </div>
+        )}
 
         {fightCamps.length > 0 && (
           <div className="bg-neutral-950 border border-mtrred/30 rounded-xl p-5">

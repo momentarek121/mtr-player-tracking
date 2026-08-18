@@ -314,8 +314,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "GROQ_API_KEY مش متضاف في إعدادات Vercel لسه." }, { status: 500 });
   }
 
-  const { playerId, messages, audience } = await req.json();
-  const canWrite = audience === "coach" && !!playerId;
+  const { playerId, messages, audience, coachId } = await req.json();
+  const canWrite = (audience === "coach" || audience === "performance") && !!playerId;
   const ownerCanWrite = audience === "owner";
 
   let contextBlock = "";
@@ -362,6 +362,21 @@ ${audience === "coach" && notes && notes.length > 0 ? `\nملاحظات المد
 
 المهارات المتاحة في النظام (استخدم الاسم بالظبط لما تسجّل تقييم): ${skillNamesList}
 `.trim();
+  } else if (audience === "performance") {
+    const [{ data: assignments }, { data: programs }] = await Promise.all([
+      coachId ? supabase.from("performance_coach_players").select("player_id, players(name, sport, weight_kg, current_belt)").eq("coach_id", coachId).eq("active", true) : Promise.resolve({ data: [] }),
+      coachId ? supabase.from("performance_programs").select("player_id, title, goal, status, performance_program_items(exercise_name, category, sets, reps, load, completed)").eq("coach_id", coachId).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+    ]);
+    const assignedPlayers = assignments || [];
+    contextBlock = `
+أنت تعمل داخل مساحة مدرب الأداء البدني. لا تتكلم عن كل لاعبي الأكاديمية؛ استخدم فقط اللاعبين المسندين لهذا المدرب.
+
+اللاعبون المسندون:
+${assignedPlayers.map((a: any) => `- ${a.players?.name}: ${a.players?.sport} · ${a.players?.weight_kg || "—"} كجم · حزام ${a.players?.current_belt || "—"}`).join("\n") || "لا يوجد لاعبين مسندين بعد"}
+
+برامج الأداء الحالية:
+${(programs || []).map((p: any) => `- ${assignedPlayers.find((a: any) => a.player_id === p.player_id)?.players?.name || p.player_id}: ${p.title} (${p.goal || "بدون هدف"}) — ${(p.performance_program_items || []).map((i: any) => `${i.exercise_name} ${i.sets || ""}x${i.reps || ""} ${i.completed ? "مكتمل" : "مفتوح"}`).join(", ")}`).join("\n") || "لا توجد برامج أداء بعد"}
+`.trim();
   } else if (audience === "owner") {
     const [{ data: players }, { data: openRoadmap }, { data: subs }] = await Promise.all([
       supabase.from("players").select("id, name, sport, current_belt, active").eq("approval_status", "APPROVED"),
@@ -400,12 +415,15 @@ ${expiringSoon.map((s: any) => {
 
   const toolsInstruction = canWrite
     ? `\n\nعندك أدوات (tools) تقدر تستخدمها لما الكوتش يطلب منك تسجّل حاجة فعليًا في النظام، مش بس تتكلم عنها: تسجيل تقييم مهارة برقم، إضافة ملاحظة، إضافة هدف تطوير بتاريخ، إضافة وجبة لخطة غذائية، تكليف اللاعب بتمرين، أو إضافة موعد لجدوله الأسبوعي. لو الكوتش قال حاجة زي "ابعتله كذا" أو "حط له خطة غذائية كذا" أو "كلّفه بالتمرين ده"، استخدم الأداة المناسبة على طول من غير ما تستأذن — الكوتش هيقدر يراجع ويعدّل أي حاجة تسجّلها يدويًا بعد كده من التابات التانية. متسجّلش حاجة لو الكلام عام أو مجرد سؤال.`
+    : audience === "performance"
+    ? `\n\nأنت مساعد متخصص في إعداد القوة واللياقة والاستشفاء لرياضات القتال. قدم توصيات عملية مرتبطة باللاعبين المسندين والبرامج الموجودة فقط. لا تشخّص إصابات ولا تعطِ قرارًا طبيًا؛ عند وجود ألم أو أعراض مقلقة وجّه المدرب لإحالة اللاعب لمختص.`
     : ownerCanWrite
     ? `\n\nعندك أدوات (tools) توزّع بيها تمرين أو وجبة أو ملاحظة أو موعد جدول أو هدف تطوير بتاريخ على أكتر من لاعب مرة واحدة. لو صاحب النظام قال "وزّع كذا على الكل" استخدم مصفوفة فيها "ALL" بس في خانة players. لو قال أسماء محددة، استخدم أسمائهم بالظبط زي ما هي في قايمة اللاعبين اللي وصلتك. استخدم الأداة على طول من غير ما تستأذن — هيقدر يراجع ويعدّل بعد كده لكل لاعب لوحده.`
     : "";
 
   const systemPrompt = `أنت مساعد ذكي متخصص في رياضتي الجوجيتسو (BJJ) والـ MMA، بتساعد ${
-    audience === "owner" ? "صاحب النظام" : audience === "coach" ? "كوتش" : "لاعب"
+          audience === "owner" ? "صاحب النظام" : audience === "performance" ? "مدرب الأداء البدني" : audience === "coach" ? "كوتش" : "لاعب"
+
   } في نظام تتبع تدريب اسمه MTR Team. ردودك دايمًا بالعربية المصرية العامية، مختصرة وعملية ومباشرة، مبنية على البيانات الفعلية اللي هتوصلك عن اللاعب. اقترح تمارين وخطط غذائية وتوصيات تقنية حقيقية ومحددة، مش كلام عام. لو البيانات ناقصة، قول كده صراحة بدل ما تختلق معلومات.${toolsInstruction}
 
 ${contextBlock}`;

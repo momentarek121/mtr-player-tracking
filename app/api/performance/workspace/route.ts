@@ -1,0 +1,74 @@
+import { NextRequest, NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase-admin";
+
+export async function GET(req: NextRequest) {
+  const coachId = new URL(req.url).searchParams.get("coachId");
+  if (!coachId) return NextResponse.json({ error: "coachId is required" }, { status: 400 });
+  const [{ data: assignments, error: assignmentError }, { data: players, error: playersError }] = await Promise.all([
+    supabase.from("performance_coach_players").select("id, coach_id, player_id, active, players(*)").eq("coach_id", coachId).eq("active", true).order("created_at"),
+    supabase.from("players").select("id, name, player_code, sport, current_belt, weight_kg, height_cm, photo_url, active, approval_status").eq("approval_status", "APPROVED").eq("active", true).order("name"),
+  ]);
+  if (assignmentError || playersError) return NextResponse.json({ error: assignmentError?.message || playersError?.message }, { status: 500 });
+  const playerIds = (assignments || []).map((a: any) => a.player_id);
+  const { data: programs, error: programsError } = playerIds.length
+    ? await supabase.from("performance_programs").select("*").eq("coach_id", coachId).in("player_id", playerIds).order("start_date", { ascending: false, nullsFirst: false })
+    : { data: [], error: null };
+  if (programsError) return NextResponse.json({ error: programsError.message }, { status: 500 });
+  const programIds = (programs || []).map((p: any) => p.id);
+  const { data: items, error: itemsError } = programIds.length
+    ? await supabase.from("performance_program_items").select("*").in("program_id", programIds).order("created_at")
+    : { data: [], error: null };
+  if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 });
+  return NextResponse.json({ assignments: assignments || [], players: players || [], programs: programs || [], items: items || [] });
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  if (body.type === "assignment") {
+    if (!body.coachId || !body.playerId) return NextResponse.json({ error: "coachId and playerId are required" }, { status: 400 });
+    const { data, error } = await supabase.from("performance_coach_players").upsert({ coach_id: body.coachId, player_id: body.playerId, assigned_by: body.assignedBy || null, active: true }, { onConflict: "coach_id,player_id" }).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ assignment: data }, { status: 201 });
+  }
+  if (body.type === "item") {
+    if (!body.programId || !body.exerciseName) return NextResponse.json({ error: "programId and exerciseName are required" }, { status: 400 });
+    const { data, error } = await supabase.from("performance_program_items").insert({ program_id: body.programId, day_label: body.dayLabel || null, exercise_name: body.exerciseName, category: body.category || "STRENGTH", sets: body.sets || null, reps: body.reps || null, load: body.load || null, rest: body.rest || null, instructions: body.instructions || null }).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ item: data }, { status: 201 });
+  }
+  if (!body.coachId || !body.playerId || !body.title) return NextResponse.json({ error: "coachId, playerId and title are required" }, { status: 400 });
+  const { data, error } = await supabase.from("performance_programs").insert({ coach_id: body.coachId, player_id: body.playerId, title: body.title, goal: body.goal || null, start_date: body.startDate || null, end_date: body.endDate || null, notes: body.notes || null }).select().single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ program: data }, { status: 201 });
+}
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json();
+  if (body.type === "item") {
+    if (!body.itemId) return NextResponse.json({ error: "itemId is required" }, { status: 400 });
+    const update: Record<string, any> = {};
+    if (body.completed !== undefined) { update.completed = body.completed; update.completed_at = body.completed ? new Date().toISOString() : null; }
+    if (body.instructions !== undefined) update.instructions = body.instructions;
+    const { data, error } = await supabase.from("performance_program_items").update(update).eq("id", body.itemId).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ item: data });
+  }
+  if (!body.programId) return NextResponse.json({ error: "programId is required" }, { status: 400 });
+  const update: Record<string, any> = {};
+  if (body.status !== undefined) update.status = body.status;
+  if (body.goal !== undefined) update.goal = body.goal;
+  if (body.notes !== undefined) update.notes = body.notes;
+  const { data, error } = await supabase.from("performance_programs").update({ ...update, updated_at: new Date().toISOString() }).eq("id", body.programId).select().single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ program: data });
+}
+
+export async function DELETE(req: NextRequest) {
+  const params = new URL(req.url).searchParams;
+  const coachId = params.get("coachId");
+  const playerId = params.get("playerId");
+  if (!coachId || !playerId) return NextResponse.json({ error: "coachId and playerId are required" }, { status: 400 });
+  const { error } = await supabase.from("performance_coach_players").update({ active: false }).eq("coach_id", coachId).eq("player_id", playerId);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
+}
