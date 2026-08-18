@@ -7,8 +7,13 @@ export async function getAuthenticatedCoach(req: NextRequest) {
   if (!token) return null;
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
   if (userError || !userData.user?.email) return null;
-  const { data: coach } = await supabase.from("coaches").select("id, name, email, role, auth_user_id").eq("email", userData.user.email).maybeSingle();
+  const user = userData.user;
+  const { data: linkedCoach } = await supabase.from("coaches").select("id, name, email, role, auth_user_id").eq("auth_user_id", user.id).maybeSingle();
+  const { data: emailCoach } = linkedCoach ? { data: null } : await supabase.from("coaches").select("id, name, email, role, auth_user_id").eq("email", user.email).maybeSingle();
+  const coach = linkedCoach || emailCoach;
   if (!coach || !["ADMIN", "HEAD_COACH", "COACH", "PERFORMANCE_COACH"].includes(coach.role)) return null;
+  if (!coach.auth_user_id) await supabase.from("coaches").update({ auth_user_id: user.id }).eq("id", coach.id);
+
   return coach;
 }
 
