@@ -19,7 +19,15 @@ export async function GET(req: NextRequest) {
     ? await supabase.from("performance_program_items").select("*").in("program_id", programIds).order("created_at")
     : { data: [], error: null };
   if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 });
-  return NextResponse.json({ assignments: assignments || [], players: players || [], programs: programs || [], items: items || [] });
+  const [{ data: readiness }, { data: weightLog }, { data: fightCamps }, { data: attachments }] = playerIds.length
+    ? await Promise.all([
+        supabase.from("player_readiness").select("*").in("player_id", playerIds).order("date", { ascending: false }),
+        supabase.from("player_weight_log").select("*").in("player_id", playerIds).order("date", { ascending: false }),
+        supabase.from("fight_camps").select("*").in("player_id", playerIds).eq("status", "ACTIVE").order("competition_date", { ascending: true, nullsFirst: false }),
+        supabase.from("player_attachments").select("id, player_id, file_name, file_type, file_url, caption, stage, uploaded_at").in("player_id", playerIds).order("uploaded_at", { ascending: false }),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
+  return NextResponse.json({ assignments: assignments || [], players: players || [], programs: programs || [], items: items || [], readiness: readiness || [], weightLog: weightLog || [], fightCamps: fightCamps || [], attachments: attachments || [] });
 }
 
 export async function POST(req: NextRequest) {

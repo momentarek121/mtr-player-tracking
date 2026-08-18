@@ -14,6 +14,10 @@ export default function PerformancePage() {
   const [assignments, setAssignments] = useState<any[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [readiness, setReadiness] = useState<any[]>([]);
+  const [weightLog, setWeightLog] = useState<any[]>([]);
+  const [fightCamps, setFightCamps] = useState<any[]>([]);
+  const [attachments, setAttachments] = useState<any[]>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -40,6 +44,10 @@ export default function PerformancePage() {
     setAllPlayers(data.players || []);
     setPrograms(data.programs || []);
     setItems(data.items || []);
+    setReadiness(data.readiness || []);
+    setWeightLog(data.weightLog || []);
+    setFightCamps(data.fightCamps || []);
+    setAttachments(data.attachments || []);
     if (!selectedPlayerId && data.assignments?.[0]?.player_id) setSelectedPlayerId(data.assignments[0].player_id);
     setLoading(false);
   };
@@ -50,6 +58,10 @@ export default function PerformancePage() {
   const playerPrograms = useMemo(() => programs.filter((p) => p.player_id === selectedPlayer?.id), [programs, selectedPlayer]);
   const activeProgram = playerPrograms.find((p) => p.status === "ACTIVE") || playerPrograms[0];
   const programItems = items.filter((i) => i.program_id === activeProgram?.id);
+  const playerReadiness = readiness.filter((r) => r.player_id === selectedPlayer?.id)[0];
+  const playerWeightLog = weightLog.filter((w) => w.player_id === selectedPlayer?.id);
+  const playerCamps = fightCamps.filter((c) => c.player_id === selectedPlayer?.id);
+  const playerAttachments = attachments.filter((a) => a.player_id === selectedPlayer?.id);
   const currentPlayerIds = new Set(assignments.map((a) => a.player_id));
 
   const assignPlayer = async (playerId: string) => {
@@ -112,6 +124,7 @@ export default function PerformancePage() {
         <main className="space-y-5">{selectedPlayer ? <>
           <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 flex items-center justify-between gap-3"><div><div className="text-lg font-semibold">{selectedPlayer.name}</div><div className="text-xs text-neutral-500 mt-1">{selectedPlayer.player_code} · {selectedPlayer.sport} · حزام {BELT_LABELS[selectedPlayer.current_belt]} · {selectedPlayer.weight_kg} كجم</div></div><button onClick={removePlayer} disabled={saving} className="text-xs text-neutral-500 hover:text-red-400">إزالة من قائمتي</button></div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><Metric label="البرامج" value={playerPrograms.length} /><Metric label="تمارين نشطة" value={programItems.filter((i) => !i.completed).length} /><Metric label="تمارين مكتملة" value={programItems.filter((i) => i.completed).length} /><Metric label="الوزن" value={`${selectedPlayer.weight_kg || "—"} كجم`} /></div>
+          <div className="grid md:grid-cols-2 gap-4"><div className="bg-neutral-950 border border-violet-700/30 rounded-xl p-4"><div className="text-sm font-semibold mb-2">الجاهزية الأخيرة</div>{playerReadiness ? <div className="grid grid-cols-3 gap-2 text-center"><MiniMetric label="نوم" value={`${playerReadiness.sleep_quality}/5`} /><MiniMetric label="طاقة" value={`${playerReadiness.energy}/5`} /><MiniMetric label="إجهاد" value={`${playerReadiness.soreness}/5`} /></div> : <div className="text-xs text-neutral-500">لا توجد قراءة جاهزية بعد.</div>}</div><div className="bg-neutral-950 border border-mtrgold/30 rounded-xl p-4"><div className="text-sm font-semibold mb-2">المتابعة المرتبطة</div><div className="text-xs text-neutral-400">{playerCamps.length} معسكر نشط · {playerWeightLog.length} قياس وزن · {playerAttachments.length} وسائط</div><div className="text-[11px] text-neutral-600 mt-2">استخدم هذه المؤشرات لتعديل الحمل قبل الحصة التالية.</div></div></div>
           <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-3"><div><div className="text-sm font-semibold">إنشاء برنامج أداء بدني</div><div className="text-[11px] text-neutral-500 mt-1">برنامج خاص باللاعب، منفصل عن خطة الجوجيتسو والتكتيك.</div></div><div className="grid md:grid-cols-2 gap-2"><input value={programTitle} onChange={(e) => setProgramTitle(e.target.value)} placeholder="اسم البرنامج (مثلاً: Strength Block 1)" className="bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-xs" /><input value={programGoal} onChange={(e) => setProgramGoal(e.target.value)} placeholder="الهدف (قوة، تحمل، خفض وزن...)" className="bg-black border border-neutral-700 rounded-lg px-3 py-2.5 text-xs" /></div><button onClick={createProgram} disabled={saving || !programTitle.trim()} className="bg-mtrred rounded-lg px-4 py-2.5 text-xs font-semibold disabled:opacity-40">إنشاء البرنامج</button></div>
           {activeProgram && <div className="bg-neutral-950 border border-mtrred/30 rounded-xl p-5 space-y-4"><div className="flex items-start justify-between"><div><div className="text-base font-semibold">{activeProgram.title}</div><div className="text-xs text-neutral-500 mt-1">{activeProgram.goal || "بدون هدف محدد"}</div></div><span className="text-[10px] text-green-400 bg-green-400/10 rounded-full px-2 py-1">{activeProgram.status}</span></div><div className="grid md:grid-cols-[1fr_120px_100px_100px_auto] gap-2"><input value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} placeholder="اسم التمرين" className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-xs" /><select value={exerciseCategory} onChange={(e) => setExerciseCategory(e.target.value)} className="bg-black border border-neutral-700 rounded-lg px-2 py-2 text-xs">{Object.entries(CATEGORY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select><input value={exerciseSets} onChange={(e) => setExerciseSets(e.target.value)} placeholder="Sets" className="bg-black border border-neutral-700 rounded-lg px-2 py-2 text-xs" /><input value={exerciseReps} onChange={(e) => setExerciseReps(e.target.value)} placeholder="Reps" className="bg-black border border-neutral-700 rounded-lg px-2 py-2 text-xs" /><button onClick={addExercise} disabled={saving || !exerciseName.trim()} className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 text-xs">إضافة</button></div><div className="space-y-2">{programItems.map((item) => <label key={item.id} className="flex items-center gap-3 bg-neutral-900 rounded-lg px-3 py-3 cursor-pointer"><input type="checkbox" checked={item.completed} onChange={() => toggleItem(item)} className="accent-mtrred" /><span className={`text-sm ${item.completed ? "line-through text-neutral-600" : "text-neutral-200"}`}>{item.exercise_name}</span><span className="text-[10px] text-neutral-500 mr-auto">{CATEGORY_LABELS[item.category] || item.category} {item.sets ? `· ${item.sets} sets` : ""} {item.reps ? `· ${item.reps} reps` : ""}</span></label>)}{programItems.length === 0 && <div className="text-xs text-neutral-500 text-center py-5">أضف أول تمرين للبرنامج.</div>}</div></div>}
           {!activeProgram && <div className="bg-neutral-950 border border-dashed border-neutral-800 rounded-xl p-8 text-center text-xs text-neutral-500">لم يتم إنشاء برنامج لهذا اللاعب بعد.</div>}
@@ -122,3 +135,4 @@ export default function PerformancePage() {
 }
 
 function Metric({ label, value }: { label: string; value: string | number }) { return <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3"><div className="text-[11px] text-neutral-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>; }
+function MiniMetric({ label, value }: { label: string; value: string }) { return <div className="bg-neutral-900 rounded-lg px-2 py-2"><div className="text-[10px] text-neutral-500">{label}</div><div className="text-sm font-semibold mt-1">{value}</div></div>; }
