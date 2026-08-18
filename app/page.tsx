@@ -45,6 +45,8 @@ export default function Page() {
   const [competitions, setCompetitions] = useState<any[]>([]);
   const [fightCamps, setFightCamps] = useState<any[]>([]);
   const [fightCampTasks, setFightCampTasks] = useState<any[]>([]);
+  const [intelligenceNotifications, setIntelligenceNotifications] = useState<any[]>([]);
+  const [developmentReport, setDevelopmentReport] = useState<any | null>(null);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -55,7 +57,7 @@ export default function Page() {
   const [deleting, setDeleting] = useState(false);
   const [showEditPlayer, setShowEditPlayer] = useState(false);
   const [tab, setTab] = useState<
-    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals" | "review" | "playerchat" | "weight" | "rolls" | "readiness" | "competitions" | "fightcamp"
+    "overview" | "assess" | "roadmap" | "curriculum" | "notes" | "files" | "assistant" | "schedule" | "nutrition" | "exercises" | "requests" | "subscription" | "attendance" | "goals" | "review" | "intelligence" | "playerchat" | "weight" | "rolls" | "readiness" | "competitions" | "fightcamp"
   >("overview");
   const [loading, setLoading] = useState(true);
 
@@ -76,6 +78,20 @@ export default function Page() {
     const res = await fetch("/api/skill-categories");
     const json = await res.json();
     setSkillCategories(json.skillCategories || []);
+  };
+
+  const loadIntelligence = async (playerId: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`/api/coach/intelligence?playerId=${playerId}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
+    const json = await res.json();
+    setIntelligenceNotifications(json.notifications || []);
+    setDevelopmentReport(json.report || null);
+  };
+
+  const acknowledgeIntelligence = async (notification: any) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    await fetch("/api/coach/intelligence", { method: "PATCH", headers: { "Content-Type": "application/json", ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ notificationId: notification.id, insightId: notification.insight_id }) });
+    if (selectedId) await loadIntelligence(selectedId);
   };
 
   const loadPlayerData = async (playerId: string) => {
@@ -120,6 +136,7 @@ export default function Page() {
     setCompetitions(comp.competitions || []);
     setFightCamps(compFight.camps || []);
     setFightCampTasks(compFight.tasks || []);
+    await loadIntelligence(playerId);
   };
 
   const addScheduleItem = async (dayOfWeek: string, timeLabel: string, activity: string) => {
@@ -750,6 +767,7 @@ export default function Page() {
                 ["roadmap", "خطة التطوير"],
                 ["goals", "أهداف بتاريخ"],
                 ["review", "مراجعة AI"],
+                ["intelligence", "ذكاء اللاعب"],
                 ["playerchat", "شات اللاعب"],
                 ["weight", "الوزن"],
                 ["rolls", "سجل السبارينج"],
@@ -803,6 +821,7 @@ export default function Page() {
               <GoalsTab goals={goals} onAdd={addGoal} onToggle={toggleGoal} onEditDate={editGoalDate} onDelete={deleteGoal} />
             )}
             {tab === "review" && <ReviewPlansTab goals={goals} meals={meals} exercises={exercises} onReview={reviewPlanItem} />}
+            {tab === "intelligence" && <PlayerIntelligenceTab report={developmentReport} notifications={intelligenceNotifications} onAcknowledge={acknowledgeIntelligence} />}
             {tab === "playerchat" && <PlayerChatLogTab logs={playerChatLogs} />}
             {tab === "weight" && <WeightTab log={weightLog} onAdd={addWeightEntry} onDelete={deleteWeightEntry} />}
             {tab === "rolls" && <RollsTab rolls={rolls} onAdd={addRoll} onDelete={deleteRoll} />}
@@ -1209,6 +1228,27 @@ function GoalsTab({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function PlayerIntelligenceTab({ report, notifications, onAcknowledge }: { report: any | null; notifications: any[]; onAcknowledge: (notification: any) => void }) {
+  const json = report?.report_json || {};
+  const categoryLabels: Record<string, string> = { INJURY: "إصابة/ألم", WEIGHT_NUTRITION: "وزن وتغذية", COMPETITION: "بطولات", MENTAL_MOTIVATION: "ذهني ودافعية", PHYSICAL: "بدني", TECHNICAL: "فني", OTHER: "عام" };
+  const counts = Object.entries(json.categoryCounts || {}).sort((a: any, b: any) => b[1] - a[1]);
+  return (
+    <div className="space-y-4">
+      <div className="bg-neutral-950 border border-violet-700/40 rounded-xl p-5">
+        <div className="flex items-start justify-between gap-3 mb-3"><div><div className="text-sm font-semibold text-neutral-200">تصور تفكير اللاعب</div><div className="text-[11px] text-neutral-500 mt-1">يتحدث تلقائيًا من رسائل الشات، وليس تشخيصًا نفسيًا أو طبيًا.</div></div><div className="text-[10px] text-violet-300 bg-violet-400/10 rounded-full px-2.5 py-1">LIVE REPORT</div></div>
+        {report ? <><div className="text-sm text-neutral-300 leading-relaxed mb-4">{report.summary}</div><div className="flex flex-wrap gap-2">{counts.map(([key, value]) => <span key={key} className="text-[11px] bg-neutral-900 border border-neutral-800 rounded-full px-2.5 py-1">{categoryLabels[key] || key}: {String(value)}</span>)}</div></> : <div className="text-xs text-neutral-500 py-5 text-center">لسه مفيش تقرير. أول رسالة من اللاعب هتبدأ بناء الصورة.</div>}
+      </div>
+
+      <div className="bg-neutral-950 border border-mtrred/40 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold text-neutral-200">تنبيهات وإشارات من الشات</div><span className="text-[10px] text-mtrred bg-mtrred/10 rounded-full px-2 py-1">{notifications.filter((n) => !n.read_at).length} غير مقروء</span></div>
+        {notifications.length === 0 ? <div className="text-xs text-neutral-500 text-center py-6">مفيش إشارات جديدة من اللاعب.</div> : <div className="space-y-2">{notifications.slice(0, 20).map((n: any) => <div key={n.id} className={`bg-neutral-900 border rounded-lg p-3 ${n.severity === "HIGH" ? "border-mtrred/70" : "border-neutral-800"}`}><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-semibold">{n.title}</div><div className="text-xs text-neutral-400 leading-relaxed mt-1">{n.body}</div><div className="text-[10px] text-neutral-600 mt-1">{new Date(n.created_at).toLocaleString("ar-EG")}</div></div>{!n.read_at && <button onClick={() => onAcknowledge(n)} className="text-[11px] text-teal-300 shrink-0">تمت المتابعة</button>}</div></div>)}</div>}
+      </div>
+
+      {json.highPrioritySignals?.length > 0 && <div className="bg-neutral-950 border border-orange-700/50 rounded-xl p-5"><div className="text-sm font-semibold text-orange-300 mb-3">نقاط تحتاج تدخل سريع</div><div className="space-y-2">{json.highPrioritySignals.map((s: any, i: number) => <div key={i} className="text-xs text-neutral-300 bg-neutral-900 rounded-lg p-3">{s.summary}<div className="text-[11px] text-orange-300 mt-1">{s.mindset_signal}</div></div>)}</div></div>}
     </div>
   );
 }

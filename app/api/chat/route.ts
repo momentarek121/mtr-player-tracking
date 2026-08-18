@@ -84,8 +84,16 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "get_development_report",
+      description: "اعرض تقرير التطوير الشامل للاعب، بما في ذلك أكثر محاور تفكيره تكرارًا، الإشارات المهمة، والخطط المرتبطة بالشات.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "add_schedule_item",
-      description: "أضف موعد تدريب لجدول اللاعب الأسبوعي.",
+      description: "أضف موعد تدريب لجدول اللاعب.",
       parameters: {
         type: "object",
         properties: {
@@ -122,6 +130,14 @@ const PLAYER_TOOLS = [
       name: "add_player_meal_draft",
       description: "أضف وجبة أو اقتراحًا غذائيًا كمسودة للاعب فقط عندما يطلب صراحة خطة غذائية. اكتب بوضوح أنها مسودة تحتاج مراجعة المدرب أو أخصائي تغذية، ولا تستخدمها لقطع ماء سريع أو تجويع.",
       parameters: { type: "object", properties: { mealTime: { type: "string" }, title: { type: "string" }, description: { type: "string" } }, required: ["mealTime", "title"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_development_report",
+      description: "اعرض تقرير التطوير الشامل للاعب، بما في ذلك أكثر محاور تفكيره تكرارًا، الإشارات المهمة، والخطط المرتبطة بالشات.",
+      parameters: { type: "object", properties: {} },
     },
   },
 ];
@@ -267,7 +283,64 @@ async function execOwnerTool(name: string, args: any) {
   return { ok: false, message: "أداة غير معروفة." };
 }
 
-async function execTool(playerId: string, name: string, args: any) {
+function classifyPlayerMessage(content: string) {
+  const text = String(content || "").toLowerCase();
+  if (/إصابة|وجع|ألم|دوخة|إغماء|injury|pain|dizzy/.test(text)) return { category: "INJURY", urgency: "HIGH", signal: "اللاعب يذكر ألمًا أو عرضًا يحتاج متابعة مباشرة." };
+  if (/وزن|تخسيس|اخس|دهون|سعرات|أكل|غذاء|وجبة|weight|diet/.test(text)) return { category: "WEIGHT_NUTRITION", urgency: "NORMAL", signal: "اللاعب يركز على الوزن أو التغذية والاستعداد البدني." };
+  if (/بطولة|نزال|منافس|ماتش|قتال|competition|fight/.test(text)) return { category: "COMPETITION", urgency: "NORMAL", signal: "اللاعب يفكر في الاستعداد للمنافسة أو ضغط الأداء." };
+  if (/مش قادر|محبط|خايف|قلقان|توتر|زهقت|motiv|خوف|ثقة/.test(text)) return { category: "MENTAL_MOTIVATION", urgency: "MEDIUM", signal: "اللاعب يعبّر عن ضغط أو دافع أو ثقة تحتاج متابعة." };
+  if (/تمرين|قوة|لياقة|سرعة|تحمل|استشفاء|training|strength|conditioning/.test(text)) return { category: "PHYSICAL", urgency: "NORMAL", signal: "اللاعب يطلب تطويرًا بدنيًا أو تنظيم حمل التدريب." };
+  if (/دفاع|هجوم|جارد|تايك|إسكيب|تقنية|فنية|technical|guard|takedown/.test(text)) return { category: "TECHNICAL", urgency: "NORMAL", signal: "اللاعب يركز على مشكلة فنية أو مهارة محددة." };
+  return { category: "OTHER", urgency: "NORMAL", signal: "إشارة عامة من حوار اللاعب وتحتاج قراءة السياق." };
+}
+
+async function trackPlayerIntelligence(playerId: string, sourceLogId: string | null, userContent: string, assistantReply: string, actionsTaken: string[], emitInsight = true) {
+  const classification = classifyPlayerMessage(userContent);
+  const excerpt = String(userContent || "").slice(0, 500);
+  const summary = excerpt || "رسالة من اللاعب بدون نص";
+  let insight: any = null;
+  if (emitInsight) {
+    const result = await supabase.from("player_chat_insights").insert({
+      player_id: playerId, source_log_id: sourceLogId, category: classification.category, urgency: classification.urgency,
+      summary, mindset_signal: classification.signal, recommended_action: assistantReply.slice(0, 800), message_excerpt: excerpt,
+    }).select("id, created_at").single();
+    insight = result.data;
+    if (insight) {
+      await supabase.from("coach_notifications").insert({
+        player_id: playerId, insight_id: insight.id, notification_type: "CHAT_INSIGHT",
+        title: classification.urgency === "HIGH" ? "تنبيه مهم من شات لاعب" : "إشارة جديدة من شات لاعب",
+        body: `${summary} — ${classification.signal}`, severity: classification.urgency,
+        metadata: { actionsTaken },
+      });
+    }
+  }
+  const [{ data: recent }, { data: goals }, { data: exercises }, { data: meals }] = await Promise.all([
+    supabase.from("player_chat_insights").select("category, urgency, summary, mindset_signal, recommended_action, created_at, status").eq("player_id", playerId).order("created_at", { ascending: false }).limit(30),
+    supabase.from("player_goals").select("title, review_status, status, created_at").eq("player_id", playerId).order("created_at", { ascending: false }).limit(20),
+    supabase.from("player_exercises").select("title, review_status, completed, assigned_at").eq("player_id", playerId).order("assigned_at", { ascending: false }).limit(20),
+    supabase.from("player_meals").select("title, review_status, meal_time, sort_order").eq("player_id", playerId).order("sort_order").limit(20),
+  ]);
+  const categoryCounts: Record<string, number> = {};
+  (recent || []).forEach((x: any) => { categoryCounts[x.category] = (categoryCounts[x.category] || 0) + 1; });
+  const reportJson = {
+    generatedFrom: "PLAYER_CHAT", lastEventAt: new Date().toISOString(), categoryCounts,
+    highPrioritySignals: (recent || []).filter((x: any) => x.urgency === "HIGH").slice(0, 8),
+    recentSignals: (recent || []).slice(0, 12),
+    planSnapshot: { goals: goals || [], exercises: exercises || [], meals: meals || [] },
+    latestActions: actionsTaken,
+  };
+  const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || classification.category;
+  const reportSummary = `أكثر محور ظاهر في كلام اللاعب حاليًا: ${topCategory}. آخر إشارة: ${summary}. الإجراء المقترح: ${assistantReply.slice(0, 400)}`;
+  await supabase.from("player_development_reports").upsert({ player_id: playerId, report_type: "LIVE_DEVELOPMENT", title: "تقرير التطوير الشامل", summary: reportSummary, report_json: reportJson, source_event_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: "player_id,report_type" });
+}
+
+async function execTool(playerId: string, name: string, args: any, sourceLogId?: string | null) {
+  if (name === "get_development_report") {
+    const { data: report } = await supabase.from("player_development_reports").select("summary, report_json, updated_at").eq("player_id", playerId).eq("report_type", "LIVE_DEVELOPMENT").maybeSingle();
+    if (!report) return { ok: true, message: "لسه مفيش تقرير متجمع للاعب. أول ما تتسجل رسائل في الشات هبدأ أبني الصورة." };
+    const counts = Object.entries(report.report_json?.categoryCounts || {}).sort((a: any, b: any) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k}: ${v}`).join("، ");
+    return { ok: true, message: `تقرير التطوير المحدث (${report.updated_at}): ${report.summary} المحاور الأكثر تكرارًا: ${counts || "لا يوجد بعد"}.` };
+  }
   if (name === "log_skill_assessment") {
     const { data: skill } = await supabase
       .from("skill_categories")
@@ -334,17 +407,17 @@ async function execTool(playerId: string, name: string, args: any) {
   }
 
   if (name === "create_player_goal") {
-    await supabase.from("player_goals").insert({ player_id: playerId, title: args.title, description: args.description || "هدف أنشأه اللاعب من الشات ويحتاج متابعة المدرب.", target_date: args.targetDate || null, source: "PLAYER_AI", review_status: "DRAFT" });
+    await supabase.from("player_goals").insert({ player_id: playerId, title: args.title, description: args.description || "هدف أنشأه اللاعب من الشات ويحتاج متابعة المدرب.", target_date: args.targetDate || null, source: "PLAYER_AI", review_status: "DRAFT", created_from_chat_id: sourceLogId || null });
     return { ok: true, message: `اتضاف هدفك: "${args.title}" — والمدرب يقدر يراجعه ويعدّله.` };
   }
 
   if (name === "assign_player_exercise") {
-    await supabase.from("player_exercises").insert({ player_id: playerId, title: args.title, description: args.description || null, due_date: args.dueDate || null, source: "PLAYER_AI", review_status: "DRAFT" });
+    await supabase.from("player_exercises").insert({ player_id: playerId, title: args.title, description: args.description || null, due_date: args.dueDate || null, source: "PLAYER_AI", review_status: "DRAFT", created_from_chat_id: sourceLogId || null });
     return { ok: true, message: `اتضاف لك تمرين: "${args.title}" — كمسودة قابلة لمراجعة المدرب.` };
   }
 
   if (name === "add_player_meal_draft") {
-    await supabase.from("player_meals").insert({ player_id: playerId, meal_time: args.mealTime, title: args.title, description: args.description || null, source: "PLAYER_AI", review_status: "DRAFT" });
+    await supabase.from("player_meals").insert({ player_id: playerId, meal_time: args.mealTime, title: args.title, description: args.description || null, source: "PLAYER_AI", review_status: "DRAFT", created_from_chat_id: sourceLogId || null });
     return { ok: true, message: `اتضاف اقتراح غذائي كمسودة: "${args.title}" — راجعه مع المدرب قبل الاعتماد.` };
   }
 
@@ -525,14 +598,21 @@ ${contextBlock}`;
     const data = await res.json();
     const choice = data.choices?.[0]?.message;
     const actionsTaken: string[] = [];
+    const lastUserMsg = messages[messages.length - 1];
+    let userChatLogId: string | null = null;
+    if (audience === "player" && playerId && lastUserMsg?.role === "user") {
+      const { data: userLog } = await supabase.from("player_chat_logs").insert({ player_id: playerId, role: "user", content: lastUserMsg.content }).select("id").single();
+      userChatLogId = userLog?.id || null;
+    }
 
     const logIfPlayer = async (reply: string) => {
-      if (audience !== "player" || !playerId) return;
-      const lastUserMsg = messages[messages.length - 1];
-      const rows = [];
-      if (lastUserMsg?.role === "user") rows.push({ player_id: playerId, role: "user", content: lastUserMsg.content });
-      rows.push({ player_id: playerId, role: "assistant", content: reply });
-      await supabase.from("player_chat_logs").insert(rows);
+      if (!playerId) return;
+      if (audience === "player") {
+        await supabase.from("player_chat_logs").insert({ player_id: playerId, role: "assistant", content: reply });
+        await trackPlayerIntelligence(playerId, userChatLogId, String(lastUserMsg?.content || ""), reply, actionsTaken, true);
+      } else if (audience === "coach") {
+        await trackPlayerIntelligence(playerId, null, String(lastUserMsg?.content || ""), reply, actionsTaken, false);
+      }
     };
 
     if (choice?.tool_calls?.length) {
@@ -542,7 +622,7 @@ ${contextBlock}`;
         try { args = JSON.parse(call.function.arguments); } catch {}
         const result = ownerCanWrite
           ? await execOwnerTool(call.function.name, args)
-          : await execTool(playerId, call.function.name, args);
+              : await execTool(playerId, call.function.name, args, userChatLogId);
         if (result.ok) actionsTaken.push(result.message);
         toolResultMessages.push({
           role: "tool",
