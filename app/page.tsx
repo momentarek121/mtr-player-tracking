@@ -47,6 +47,9 @@ export default function Page() {
   const [fightCampTasks, setFightCampTasks] = useState<any[]>([]);
   const [intelligenceNotifications, setIntelligenceNotifications] = useState<any[]>([]);
   const [developmentReport, setDevelopmentReport] = useState<any | null>(null);
+  const [allNotifications, setAllNotifications] = useState<any[]>([]);
+  const [globalUnreadCount, setGlobalUnreadCount] = useState(0);
+  const [weeklySummaries, setWeeklySummaries] = useState<any[]>([]);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -80,6 +83,16 @@ export default function Page() {
     setSkillCategories(json.skillCategories || []);
   };
 
+  const loadCoachInbox = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/coach/intelligence?unreadOnly=false", { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
+    if (!res.ok) return;
+    const json = await res.json();
+    setAllNotifications(json.notifications || []);
+    setGlobalUnreadCount(json.unreadCount || 0);
+    setWeeklySummaries(json.weeklySummaries || []);
+  };
+
   const loadIntelligence = async (playerId: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch(`/api/coach/intelligence?playerId=${playerId}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
@@ -91,6 +104,7 @@ export default function Page() {
   const acknowledgeIntelligence = async (notification: any) => {
     const { data: { session } } = await supabase.auth.getSession();
     await fetch("/api/coach/intelligence", { method: "PATCH", headers: { "Content-Type": "application/json", ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ notificationId: notification.id, insightId: notification.insight_id }) });
+    await loadCoachInbox();
     if (selectedId) await loadIntelligence(selectedId);
   };
 
@@ -403,9 +417,11 @@ export default function Page() {
       return;
     }
     (async () => {
-      await Promise.all([loadPlayers(), loadSkillCategories(), loadPendingCount()]);
+      await Promise.all([loadPlayers(), loadSkillCategories(), loadPendingCount(), loadCoachInbox()]);
       setLoading(false);
     })();
+    const timer = window.setInterval(loadCoachInbox, 60_000);
+    return () => window.clearInterval(timer);
   }, [coach]);
 
   useEffect(() => {
@@ -706,6 +722,7 @@ export default function Page() {
       </aside>
 
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+        <CoachInboxPanel notifications={allNotifications} unreadCount={globalUnreadCount} weeklySummaries={weeklySummaries} onOpenPlayer={(playerId) => { setSelectedId(playerId); setTab("intelligence"); }} onAcknowledge={acknowledgeIntelligence} />
         {!selectedPlayer ? (
           <div className="flex flex-col items-center justify-center h-[80vh] gap-3 text-center">
             <div className="text-lg font-semibold">ابدأ بإضافة لاعب</div>
@@ -1228,6 +1245,22 @@ function GoalsTab({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function CoachInboxPanel({ notifications, unreadCount, weeklySummaries, onOpenPlayer, onAcknowledge }: { notifications: any[]; unreadCount: number; weeklySummaries: any[]; onOpenPlayer: (playerId: string) => void; onAcknowledge: (notification: any) => void }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="max-w-3xl mb-5 bg-neutral-950 border border-mtrred/35 rounded-xl overflow-hidden">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-3 px-4 py-3 text-right hover:bg-neutral-900/60 transition">
+        <div><div className="text-sm font-semibold text-neutral-200">مركز متابعة اللاعبين</div><div className="text-[11px] text-neutral-500 mt-0.5">إشارات الشات والتدخلات المطلوبة من كل اللاعبين</div></div>
+        <div className="flex items-center gap-2"><span className="text-[11px] text-mtrred bg-mtrred/10 rounded-full px-2.5 py-1">{unreadCount} غير مقروء</span><span className="text-neutral-500">{open ? "⌃" : "⌄"}</span></div>
+      </button>
+      {open && <div className="border-t border-neutral-800 p-3 space-y-4">
+        <div>{notifications.length === 0 ? <div className="text-xs text-neutral-500 text-center py-4">مفيش إشعارات جديدة من شات اللاعبين.</div> : <div className="space-y-2">{notifications.slice(0, 8).map((n: any) => <div key={n.id} className={`rounded-lg border p-3 ${n.severity === "HIGH" ? "border-mtrred/70 bg-mtrred/5" : "border-neutral-800 bg-neutral-900/50"}`}><div className="flex items-start gap-3"><div className="flex-1 min-w-0"><div className="flex items-center gap-2"><span className="text-sm font-medium">{n.players?.name || "لاعب"}</span><span className={`text-[10px] rounded-full px-2 py-0.5 ${n.severity === "HIGH" ? "text-red-300 bg-red-400/10" : "text-neutral-400 bg-neutral-800"}`}>{n.severity}</span></div><div className="text-xs text-neutral-300 mt-1 leading-relaxed">{n.body}</div><div className="text-[10px] text-neutral-600 mt-1">{new Date(n.created_at).toLocaleString("ar-EG")}</div></div><div className="flex flex-col items-end gap-2 shrink-0"><button onClick={() => onOpenPlayer(n.player_id)} className="text-[11px] text-violet-300 hover:text-violet-200">فتح الملف</button>{!n.read_at && <button onClick={() => onAcknowledge(n)} className="text-[11px] text-teal-300">تمت المتابعة</button>}</div></div></div>)}</div>}</div>
+        {weeklySummaries.length > 0 && <div><div className="text-xs font-semibold text-neutral-300 mb-2">ملخص الأسبوع — الالتزام الفعلي</div><div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{weeklySummaries.slice(0, 8).map((s: any) => <button key={s.playerId} onClick={() => onOpenPlayer(s.playerId)} className="text-right bg-neutral-900/60 border border-neutral-800 rounded-lg p-3 hover:border-neutral-600 transition"><div className="flex items-center justify-between gap-2"><span className="text-sm font-medium truncate">{s.playerName}</span><span className={`text-xs ${s.highPrioritySignals > 0 ? "text-red-300" : s.adherencePercent !== null && s.adherencePercent < 50 ? "text-orange-300" : "text-teal-300"}`}>{s.adherencePercent === null ? "مفيش تمارين" : `${s.adherencePercent}% التزام`}</span></div><div className="text-[11px] text-neutral-500 mt-1">تمارين {s.exercisesCompleted}/{s.exercisesAssigned} · حضور {s.attendanceCount} · إشارات {s.chatSignals}{s.highPrioritySignals > 0 ? ` · ${s.highPrioritySignals} عاجل` : ""}</div></button>)}</div></div>}
+      </div>}
     </div>
   );
 }
