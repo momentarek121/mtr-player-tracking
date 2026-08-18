@@ -22,3 +22,13 @@ export async function getAuthenticatedPerformanceCoach(req: NextRequest) {
   if (!coach || !["ADMIN", "HEAD_COACH", "PERFORMANCE_COACH"].includes(coach.role)) return null;
   return coach;
 }
+
+export async function getAuthenticatedPlayer(req: NextRequest) {
+  const authorization = req.headers.get("authorization") || "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!token) return null;
+  const { data: userData, error: userError } = await supabase.auth.getUser(token);
+  if (userError || !userData.user?.id) return null;
+  const { data: player } = await supabase.from("players").select("id, name, auth_user_id, sport, weight_kg, current_belt").eq("auth_user_id", userData.user.id).maybeSingle();
+  return player || null;
+}

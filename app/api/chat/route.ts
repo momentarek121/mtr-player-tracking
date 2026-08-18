@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase-admin";
 import { generateRoadmapForPlayer } from "@/lib/roadmap-engine";
-import { getAuthenticatedPerformanceCoach } from "@/lib/server-auth";
+import { getAuthenticatedCoach, getAuthenticatedPerformanceCoach, getAuthenticatedPlayer } from "@/lib/server-auth";
 
 const MODEL = "openai/gpt-oss-120b";
 
@@ -95,6 +95,33 @@ const TOOLS = [
         },
         required: ["dayOfWeek", "activity"],
       },
+    },
+  },
+];
+
+const PLAYER_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "create_player_goal",
+      description: "أنشئ هدفًا رياضيًا للاعب عندما يطلب صراحة تحويل كلامه إلى خطة أو هدف قابل للمتابعة.",
+      parameters: { type: "object", properties: { title: { type: "string" }, description: { type: "string" }, targetDate: { type: "string", description: "YYYY-MM-DD" } }, required: ["title"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "assign_player_exercise",
+      description: "أضف تمرينًا للاعب عندما يطلب صراحة خطة تدريب أو واجبًا رياضيًا. اجعل الحمل تدريجيًا ومناسبًا للبيانات المتاحة.",
+      parameters: { type: "object", properties: { title: { type: "string" }, description: { type: "string" }, dueDate: { type: "string", description: "YYYY-MM-DD" } }, required: ["title"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_player_meal_draft",
+      description: "أضف وجبة أو اقتراحًا غذائيًا كمسودة للاعب فقط عندما يطلب صراحة خطة غذائية. اكتب بوضوح أنها مسودة تحتاج مراجعة المدرب أو أخصائي تغذية، ولا تستخدمها لقطع ماء سريع أو تجويع.",
+      parameters: { type: "object", properties: { mealTime: { type: "string" }, title: { type: "string" }, description: { type: "string" } }, required: ["mealTime", "title"] },
     },
   },
 ];
@@ -306,6 +333,21 @@ async function execTool(playerId: string, name: string, args: any) {
     return { ok: true, message: `اتضاف للجدول: "${args.activity}" يوم ${args.dayOfWeek}` };
   }
 
+  if (name === "create_player_goal") {
+    await supabase.from("player_goals").insert({ player_id: playerId, title: args.title, description: args.description || "هدف أنشأه اللاعب من الشات ويحتاج متابعة المدرب.", target_date: args.targetDate || null, source: "PLAYER_AI" });
+    return { ok: true, message: `اتضاف هدفك: "${args.title}" — والمدرب يقدر يراجعه ويعدّله.` };
+  }
+
+  if (name === "assign_player_exercise") {
+    await supabase.from("player_exercises").insert({ player_id: playerId, title: args.title, description: `مسودة AI — تحتاج مراجعة المدرب. ${args.description || ""}`.trim(), due_date: args.dueDate || null });
+    return { ok: true, message: `اتضاف لك تمرين: "${args.title}" — كمسودة قابلة لمراجعة المدرب.` };
+  }
+
+  if (name === "add_player_meal_draft") {
+    await supabase.from("player_meals").insert({ player_id: playerId, meal_time: args.mealTime, title: args.title, description: `مسودة AI — تحتاج مراجعة المدرب/أخصائي التغذية. ${args.description || ""}`.trim() });
+    return { ok: true, message: `اتضاف اقتراح غذائي كمسودة: "${args.title}" — راجعه مع المدرب قبل الاعتماد.` };
+  }
+
   return { ok: false, message: "أداة غير معروفة." };
 }
 
@@ -315,14 +357,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "GROQ_API_KEY مش متضاف في إعدادات Vercel لسه." }, { status: 500 });
   }
 
-  const { playerId, messages, audience, coachId: requestedCoachId } = await req.json();
+  const body = await req.json();
+  let { playerId, messages, audience, coachId: requestedCoachId } = body;
   let coachId = requestedCoachId;
-  if (audience === "performance") {
-    const authenticatedCoach = await getAuthenticatedPerformanceCoach(req);
-    if (!authenticatedCoach) return NextResponse.json({ error: "جلسة مدرب الأداء البدني غير صالحة" }, { status: 401 });
+  let authenticatedPlayer: any = null;
+  let authenticatedCoach: any = null;
+  if (audience === "player") {
+    authenticatedPlayer = await getAuthenticatedPlayer(req);
+    if (!authenticatedPlayer) return NextResponse.json({ error: "جلسة اللاعب غير صالحة" }, { status: 401 });
+    if (playerId && playerId !== authenticatedPlayer.id) return NextResponse.json({ error: "لا يمكنك استخدام شات لاعب آخر" }, { status: 403 });
+    playerId = authenticatedPlayer.id;
+  }
+  if (audience === "coach") {
+    authenticatedCoach = await getAuthenticatedCoach(req);
+    if (!authenticatedCoach) return NextResponse.json({ error: "جلسة المدرب غير صالحة" }, { status: 401 });
     coachId = authenticatedCoach.id;
   }
-  const canWrite = audience === "coach" && !!playerId;
+  if (audience === "performance") {
+    const performanceCoach = await getAuthenticatedPerformanceCoach(req);
+    if (!performanceCoach) return NextResponse.json({ error: "جلسة مدرب الأداء البدني غير صالحة" }, { status: 401 });
+    coachId = performanceCoach.id;
+  }
+  const canWrite = audience === "coach" && !!playerId && !!authenticatedCoach;
   const ownerCanWrite = audience === "owner";
 
   let contextBlock = "";
@@ -422,6 +478,8 @@ ${expiringSoon.map((s: any) => {
 
   const toolsInstruction = canWrite
     ? `\n\nعندك أدوات (tools) تقدر تستخدمها لما الكوتش يطلب منك تسجّل حاجة فعليًا في النظام، مش بس تتكلم عنها: تسجيل تقييم مهارة برقم، إضافة ملاحظة، إضافة هدف تطوير بتاريخ، إضافة وجبة لخطة غذائية، تكليف اللاعب بتمرين، أو إضافة موعد لجدوله الأسبوعي. لو الكوتش قال حاجة زي "ابعتله كذا" أو "حط له خطة غذائية كذا" أو "كلّفه بالتمرين ده"، استخدم الأداة المناسبة على طول من غير ما تستأذن — الكوتش هيقدر يراجع ويعدّل أي حاجة تسجّلها يدويًا بعد كده من التابات التانية. متسجّلش حاجة لو الكلام عام أو مجرد سؤال.`
+    : audience === "player"
+    ? `\n\nأنت مساعد اللاعب العملي. افهم هدفه أولًا: خسارة وزن، زيادة لياقة، تحسين مهارة، الاستعداد لبطولة، أو تنظيم يومه. لو البيانات ناقصة اسأل سؤالًا أو سؤالين عن الموعد، الوزن المستهدف، الإصابات، والخبرة قبل خطة دقيقة. قدّم خطوات صغيرة قابلة للتنفيذ، وحوّل طلب "اعمل لي خطة" أو "ضيف لي تمرين/وجبة/هدف" إلى أداة مناسبة. أي خطة غذائية أو خطة تخسيس تُحفظ كمسودة تحتاج مراجعة المدرب أو أخصائي التغذية. ممنوع اقتراح تجويع، قيء، أدوية، أو قطع ماء سريع، وممنوع تشخيص الإصابة. لو ظهر ألم شديد، دوخة، إغماء، أعراض مرضية، أو تاريخ مرضي مهم، أوقف النصيحة التنفيذية ووجّه اللاعب لمختص ومدربه.`
     : audience === "performance"
     ? `\n\nأنت مساعد متخصص في إعداد القوة واللياقة والاستشفاء لرياضات القتال. قدم توصيات عملية مرتبطة باللاعبين المسندين والبرامج الموجودة فقط. لا تشخّص إصابات ولا تعطِ قرارًا طبيًا؛ عند وجود ألم أو أعراض مقلقة وجّه المدرب لإحالة اللاعب لمختص.`
     : ownerCanWrite
@@ -447,6 +505,9 @@ ${contextBlock}`;
       body.tool_choice = "auto";
     } else if (ownerCanWrite) {
       body.tools = OWNER_TOOLS;
+      body.tool_choice = "auto";
+    } else if (audience === "player") {
+      body.tools = PLAYER_TOOLS;
       body.tool_choice = "auto";
     }
 
